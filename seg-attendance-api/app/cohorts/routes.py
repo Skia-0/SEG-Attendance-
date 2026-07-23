@@ -66,7 +66,8 @@ def get_cohort_summary(cohort_id):
             "sessions_attended": sessions_attended,
             "total_sessions": total_sessions,
             "attendance_percent": round(attendance_percent, 2),
-            "meets_threshold": meets_threshold
+            "meets_threshold": meets_threshold,
+            "certified": meets_threshold  # Added for clear map to "Certified (Yes/No)" in mobile/dashboard
         })
 
     return jsonify(summary_list), 200
