@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Session Live Monitor - SEG Attendance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    
+    <!-- Navigation Back -->
+    <div>
+        <a href="{{ url_for('dashboard.home') }}" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1">
+            <span>&larr; Back to Dashboard</span>
+        </a>
+    </div>
+
+    <!-- Session Overview -->
+    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center">
+        <div>
+            <span class="text-xs font-bold text-emerald-600 uppercase tracking-widest">Live Attendance Monitoring</span>
+            <h1 class="text-2xl font-bold text-gray-900 mt-1">{{ session.title or 'Untitled Session' }}</h1>
+            <p class="text-sm text-gray-500 mt-1">Cohort: <span class="font-semibold">{{ cohort.name }}</span> | Coordinator: <span class="font-semibold">{{ session.coordinator.full_name }}</span></p>
+        </div>
+        
+        <!-- Live status indicators -->
+        <div class="mt-4 md:mt-0 flex items-center space-x-3">
+            <span class="text-xs text-gray-400">Auto-refreshing every 10s...</span>
+            {% if session.ended_at %}
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 uppercase">Closed</span>
+            {% elif session.checkin_open %}
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 uppercase animate-pulse">Check-in Open</span>
+            {% elif session.checkout_open %}
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 uppercase animate-pulse">Check-out Open</span>
+            {% else %}
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 uppercase">Awaiting Action</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Action Controls -->
+    {% if not session.ended_at %}
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+            <h2 class="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Session Controls</h2>
+            <div class="flex flex-wrap gap-4">
+                
+                <!-- Check-in buttons -->
+                {% if not session.checkin_open %}
+                    <form action="{{ url_for('dashboard.toggle_checkin', session_id=session.session_id, action='open') }}" method="POST">
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold text-sm shadow-sm transition-colors">
+                            Open Check-in
+                        </button>
+                    </form>
+                {% else %}
+                    <form action="{{ url_for('dashboard.toggle_checkin', session_id=session.session_id, action='close') }}" method="POST">
+                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold text-sm shadow-sm transition-colors">
+                            Close Check-in
+                        </button>
+                    </form>
+                {% endif %}
+
+                <!-- Check-out buttons -->
+                {% if not session.checkout_open %}
+                    <form action="{{ url_for('dashboard.toggle_checkout', session_id=session.session_id, action='open') }}" method="POST">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold text-sm shadow-sm transition-colors">
+                            Open Check-out
+                        </button>
+                    </form>
+                {% else %}
+                    <form action="{{ url_for('dashboard.toggle_checkout', session_id=session.session_id, action='close') }}" method="POST">
+                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold text-sm shadow-sm transition-colors">
+                            Close Check-out
+                        </button>
+                    </form>
+                {% endif %}
+
+                <!-- End Session button -->
+                <form action="{{ url_for('dashboard.end_session', session_id=session.session_id) }}" method="POST" 
+                    onsubmit="return confirm('Are you sure you want to end this session? This action is irreversible.');" class="md:ml-auto">
+                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold text-sm shadow-sm transition-colors">
+                        End Session
+                    </button>
+                </form>
+
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Attendance Table -->
+    <div class="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <h2 class="font-bold text-gray-900">Learners List</h2>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <tr>
+                    <th class="px-6 py-3 text-left">SEG ID</th>
+                    <th class="px-6 py-3 text-left">Full Name</th>
+                    <th class="px-6 py-3 text-left">Checked In</th>
+                    <th class="px-6 py-3 text-left">Checked Out</th>
+                    <th class="px-6 py-3 text-left">Method</th>
+                    <th class="px-6 py-3 text-left">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% if learner_statuses %}
+                    {% for l in learner_statuses %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap font-mono font-bold text-xs text-emerald-700">
+                                {{ l.seg_id }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap font-semibold text-gray-800">
+                                {{ l.full_name }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                                {{ l.checked_in_at }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                                {{ l.checked_out_at }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-xs">
+                                {% if l.method == 'nfc' %}
+                                    <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-semibold uppercase">NFC</span>
+                                {% elif l.method == 'fingerprint' %}
+                                    <span class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-semibold uppercase">Fingerprint</span>
+                                {% else %}
+                                    <span class="text-gray-400">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                {% if l.status == 'Complete' %}
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Complete</span>
+                                {% elif l.status == 'Checked In' %}
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">Checked In</span>
+                                {% else %}
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-400">Pending</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500 italic">
+                            No learners registered in this cohort yet.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- Auto-refresh script (10 seconds) -->
+<script>
+    setTimeout(function() {
+        location.reload();
+    }, 10000);
+</script>
+{% endblock %}

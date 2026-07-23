@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Cohort Attendance Summary - SEG Attendance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    
+    <!-- Navigation Back -->
+    <div>
+        <a href="{{ url_for('dashboard.home') }}" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1">
+            <span>&larr; Back to Dashboard</span>
+        </a>
+    </div>
+
+    <!-- Cohort Overview -->
+    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center">
+        <div>
+            <span class="text-xs font-bold text-emerald-600 uppercase tracking-widest">Cohort summary &amp; certification</span>
+            <h1 class="text-2xl font-bold text-gray-900 mt-1">{{ cohort.name }}</h1>
+            <p class="text-sm text-gray-500 mt-1">Min. Attendance Required: <span class="font-bold text-emerald-600">{{ cohort.min_attendance_percent }}%</span></p>
+        </div>
+        <div class="mt-4 md:mt-0 text-xs text-gray-400">
+            Exported/Generated: 2026-07-23
+        </div>
+    </div>
+
+    <!-- Summary Table -->
+    <div class="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <h2 class="font-bold text-gray-900">Attendance Certification Ledger</h2>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <tr>
+                    <th class="px-6 py-3 text-left">SEG ID</th>
+                    <th class="px-6 py-3 text-left">Learner Name</th>
+                    <th class="px-6 py-3 text-center">Sessions Attended / Total</th>
+                    <th class="px-6 py-3 text-center">Attendance %</th>
+                    <th class="px-6 py-3 text-center">Certified (Min {{ cohort.min_attendance_percent }}%)</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% if summary_list %}
+                    {% for l in summary_list %}
+                        <!-- Highlight rows where meets_threshold=False in light red background -->
+                        <tr class="transition-colors {% if not l.meets_threshold %}bg-red-50 hover:bg-red-100{% else %}hover:bg-gray-50{% endif %}">
+                            <td class="px-6 py-4 whitespace-nowrap font-mono font-bold text-xs text-emerald-700">
+                                {{ l.seg_id }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap font-semibold {% if not l.meets_threshold %}text-red-900{% else %}text-gray-800{% endif %}">
+                                {{ l.full_name }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center text-gray-600 font-medium">
+                                {{ l.sessions_attended }} / {{ l.total_sessions }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center font-bold {% if not l.meets_threshold %}text-red-600{% else %}text-emerald-600{% endif %}">
+                                {{ l.attendance_percent }}%
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                {% if l.meets_threshold %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 uppercase shadow-sm">
+                                        Yes
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 uppercase shadow-sm">
+                                        No
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-8 text-center text-gray-500 italic">
+                            No summary data available. Register learners and start some sessions first.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endblock %}
