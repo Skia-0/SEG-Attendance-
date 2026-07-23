@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: seg-attendance-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt && flask db upgrade
+    startCommand: gunicorn run:app
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
