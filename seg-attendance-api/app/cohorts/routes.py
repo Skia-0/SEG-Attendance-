@@ -189,3 +189,28 @@ def get_cohort_summary(cohort_id):
         })
 
     return jsonify(summary_list), 200
+    
+@cohorts_bp.route("/<cohort_id>", methods=["DELETE"])
+@jwt_required()
+def delete_cohort(cohort_id):
+    coordinator_id = get_jwt_identity()
+    coordinator = Coordinator.query.get(coordinator_id)
+
+    try:
+        cohort = Cohort.query.get(cohort_id)
+    except Exception:
+        cohort = None
+
+    if not cohort:
+        return jsonify({"error": "Cohort not found"}), 404
+
+    # Only allow deleting cohorts in your hub
+    if coordinator and str(cohort.hub_id) != str(coordinator.hub_id):
+        return jsonify({
+            "error": "Not authorized to delete this cohort"
+        }), 403
+
+    db.session.delete(cohort)
+    db.session.commit()
+
+    return jsonify({"message": "Cohort deleted"}), 200  

@@ -1,5 +1,9 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import (
+    create_access_token,
+    jwt_required,
+    get_jwt_identity,
+)
 from app.models import Coordinator, Hub
 from app.extensions import db
 
@@ -90,3 +94,69 @@ def login():
         "hub_id": str(coordinator.hub_id),
         "hub_name": hub_name
     }), 200
+
+from flask_jwt_extended import get_jwt_identity
+
+
+@auth_bp.route("/me", methods=["GET"])
+@jwt_required()
+def get_me():
+    coordinator_id = get_jwt_identity()
+    coordinator = Coordinator.query.get(coordinator_id)
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    hub = Hub.query.get(coordinator.hub_id)
+    result = coordinator.to_dict()
+    result["hub_name"] = hub.name if hub else ""
+    result["hub_location"] = hub.location if hub else ""
+    return jsonify(result), 200
+
+
+@auth_bp.route("/me", methods=["PATCH"])
+@jwt_required()
+def update_me():
+    coordinator_id = get_jwt_identity()
+    coordinator = Coordinator.query.get(coordinator_id)
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    data = request.get_json() or {}
+
+    if "full_name" in data:
+        name = (data.get("full_name") or "").strip()
+        if len(name) < 3:
+            return jsonify({
+                "error": "Name must be at least 3 characters"
+            }), 400
+        coordinator.full_name = name
+
+    db.session.commit()
+    return jsonify(coordinator.to_dict()), 200
+
+
+@auth_bp.route("/change-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    coordinator_id = get_jwt_identity()
+    coordinator = Coordinator.query.get(coordinator_id)
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    data = request.get_json() or {}
+    old_password = data.get("old_password") or ""
+    new_password = data.get("new_password") or ""
+
+    if not coordinator.check_password(old_password):
+        return jsonify({
+            "error": "Current password is incorrect"
+        }), 401
+
+    if len(new_password) < 6:
+        return jsonify({
+            "error": "New password must be at least 6 characters"
+        }), 400
+
+    coordinator.set_password(new_password)
+    db.session.commit()
+    return jsonify({"message": "Password updated"}), 200

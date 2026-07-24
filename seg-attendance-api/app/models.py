@@ -193,3 +193,63 @@ class AttendanceRecord(db.Model):
             "verification_method": self.verification_method,
             "is_complete": self.is_complete
         }
+
+class Report(db.Model):
+    __tablename__ = "reports"
+
+    report_id = db.Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=db.text("gen_random_uuid()")
+    )
+    cohort_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("cohorts.cohort_id", ondelete="CASCADE"),
+        nullable=False
+    )
+    hub_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("hubs.hub_id", ondelete="CASCADE"),
+        nullable=False
+    )
+    session_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("sessions.session_id", ondelete="SET NULL"),
+        nullable=True
+    )
+    coordinator_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("coordinators.coordinator_id",
+                      ondelete="SET NULL"),
+        nullable=True
+    )
+    report_type = db.Column(db.String(30), nullable=False)
+    data = db.Column(db.JSON, nullable=False)
+    status = db.Column(
+        db.String(20),
+        default="submitted",
+        nullable=False
+    )
+    submitted_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        server_default=db.text("NOW()")
+    )
+
+    def to_dict(self):
+        return {
+            "report_id": str(self.report_id),
+            "cohort_id": str(self.cohort_id),
+            "hub_id": str(self.hub_id),
+            "session_id":
+                str(self.session_id) if self.session_id else None,
+            "coordinator_id":
+                str(self.coordinator_id)
+                if self.coordinator_id else None,
+            "report_type": self.report_type,
+            "data": self.data,
+            "status": self.status,
+            "submitted_at":
+                self.submitted_at.isoformat()
+                if self.submitted_at else None,
+        }

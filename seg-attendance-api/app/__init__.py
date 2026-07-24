@@ -58,6 +58,7 @@ def create_app(config_class=Config):
     from app.sessions.routes import sessions_bp
     from app.attendance.routes import attendance_bp
     from app.dashboard.routes import dashboard_bp
+    from app.reports.routes import reports_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(hubs_bp, url_prefix="/api/hubs")
@@ -67,5 +68,6 @@ def create_app(config_class=Config):
     app.register_blueprint(sessions_bp, url_prefix="/api/sessions")
     app.register_blueprint(attendance_bp, url_prefix="/api/attendance")
     app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
+    app.register_blueprint(reports_bp, url_prefix="/api/reports")
 
     return app

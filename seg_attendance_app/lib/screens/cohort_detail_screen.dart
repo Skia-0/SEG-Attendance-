@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../models/cohort.dart';
 import 'register_learner_screen.dart';
 import 'start_session_screen.dart';
+import 'summary_screen.dart';
 
 class CohortDetailScreen extends StatefulWidget {
   final String cohortId;
@@ -65,14 +66,16 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
   }
 
   void _viewSummary() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Summary — coming soon'),
-        behavior: SnackBarBehavior.floating,
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => SummaryScreen(
+        cohortId: widget.cohortId,
+        cohortName: _cohort!.name,
       ),
-    );
-  }
-
+    ),
+  );
+}
   void _startNewSession() async {
     await Navigator.push(
       context,

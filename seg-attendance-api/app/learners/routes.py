@@ -98,3 +98,63 @@ def update_fingerprint(learner_id):
     db.session.commit()
 
     return jsonify(learner.to_dict()), 200
+
+@learners_bp.route("/<learner_id>", methods=["DELETE"])
+@jwt_required()
+def delete_learner(learner_id):
+    try:
+        learner = Learner.query.get(learner_id)
+    except Exception:
+        learner = None
+
+    if not learner:
+        return jsonify({"error": "Learner not found"}), 404
+
+    db.session.delete(learner)
+    db.session.commit()
+    return jsonify({"message": "Learner deleted"}), 200
+
+
+@learners_bp.route("/<learner_id>", methods=["PATCH"])
+@jwt_required()
+def update_learner(learner_id):
+    try:
+        learner = Learner.query.get(learner_id)
+    except Exception:
+        learner = None
+
+    if not learner:
+        return jsonify({"error": "Learner not found"}), 404
+
+    data = request.get_json() or {}
+
+    if "full_name" in data:
+        name = (data.get("full_name") or "").strip()
+        if len(name) < 3:
+            return jsonify({
+                "error": "Name must be at least 3 characters"
+            }), 400
+        learner.full_name = name
+
+    if "phone" in data:
+        learner.phone = (data.get("phone") or "").strip() or None
+
+    if "nfc_uid" in data:
+        learner.nfc_uid = (data.get("nfc_uid") or "").strip() or None
+
+    db.session.commit()
+    return jsonify(learner.to_dict()), 200
+
+
+@learners_bp.route("/<learner_id>", methods=["GET"])
+@jwt_required()
+def get_learner(learner_id):
+    try:
+        learner = Learner.query.get(learner_id)
+    except Exception:
+        learner = None
+
+    if not learner:
+        return jsonify({"error": "Learner not found"}), 404
+
+    return jsonify(learner.to_dict()), 200
