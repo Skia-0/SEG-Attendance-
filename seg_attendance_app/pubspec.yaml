@@ -15,7 +15,6 @@ dependencies:
   flutter_secure_storage: ^9.2.2
 
 flutter:
-  flutter:
   uses-material-design: true
   assets:
     - assets/images/
