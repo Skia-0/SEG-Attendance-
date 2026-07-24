@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/cohort.dart';
 import 'register_learner_screen.dart';
-
+import 'start_session_screen.dart';
 
 class CohortDetailScreen extends StatefulWidget {
   final String cohortId;
   const CohortDetailScreen({super.key, required this.cohortId});
 
   @override
-  State<CohortDetailScreen> createState() => _CohortDetailScreenState();
+  State<CohortDetailScreen> createState() =>
+      _CohortDetailScreenState();
 }
 
 class _CohortDetailScreenState extends State<CohortDetailScreen> {
@@ -28,7 +29,8 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     setState(() => _loading = true);
     try {
       final cohortRes = await _api.getCohort(widget.cohortId);
-      final sessionsRes = await _api.getSessionsByCohor(widget.cohortId);
+      final sessionsRes =
+          await _api.getSessionsByCohor(widget.cohortId);
 
       setState(() {
         _cohort = Cohort.fromJson(cohortRes.data);
@@ -47,6 +49,41 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
         );
       }
     }
+  }
+
+  void _registerLearner() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RegisterLearnerScreen(
+          cohortId: widget.cohortId,
+          cohortName: _cohort!.name,
+        ),
+      ),
+    );
+    _load();
+  }
+
+  void _viewSummary() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Summary — coming soon'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _startNewSession() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StartSessionScreen(
+          cohortId: widget.cohortId,
+          cohortName: _cohort!.name,
+        ),
+      ),
+    );
+    _load();
   }
 
   @override
@@ -127,7 +164,8 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
               const SizedBox(width: 8),
               _StatChip(
                 icon: Icons.check_circle_outline,
-                label: '${_cohort!.minAttendancePercent}% min',
+                label:
+                    '${_cohort!.minAttendancePercent}% min',
               ),
             ],
           ),
@@ -234,38 +272,10 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
               ),
             )
           else
-            ..._sessions.map((s) => _SessionTile(session: s)).toList(),
+            ..._sessions
+                .map((s) => _SessionTile(session: s))
+                .toList(),
         ],
-      ),
-    );
-  }
-
-  void _registerLearner() async {
-   await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RegisterLearnerScreen(
-        cohortId: widget.cohortId,
-        cohortName: _cohort!.name,
-      ),
-    ),
-  );
-  _load(); // refresh learner count when returning
-}
-  void _viewSummary() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Summary — coming soon'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _startNewSession() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('New session — coming next'),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -280,7 +290,10 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 6,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(20),

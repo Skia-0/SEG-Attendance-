@@ -4,6 +4,7 @@ import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/cohort_provider.dart';
+import 'providers/attendance_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,7 @@ class SEGApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CohortProvider()),
+        ChangeNotifierProvider(create: (_) => AttendanceProvider())
       ],
       child: MaterialApp(
         title: 'SEG Attendance',
