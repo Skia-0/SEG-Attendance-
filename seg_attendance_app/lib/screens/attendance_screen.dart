@@ -4,6 +4,7 @@ import '../providers/attendance_provider.dart';
 import '../models/attendance_record.dart';
 import '../services/nfc_service.dart';
 import '../services/biometric_service.dart';
+import '../services/api_service.dart';
 
 class AttendanceScreen extends StatefulWidget {
   final String sessionId;
@@ -170,41 +171,120 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _endSession() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('End Session?'),
-        content: const Text(
-          'No more check-ins or check-outs will be '
-          'accepted after this.',
+   final confirm = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('End Session?'),
+      content: const Text(
+        'No more check-ins or check-outs will be '
+        'accepted after this.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade700,
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
+          child: const Text('End Session'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  _stopNfcListening();
+  final ok =
+      await context.read<AttendanceProvider>().endSession();
+  if (!ok || !mounted) return;
+
+  _showSnack('Session ended');
+
+  // Prompt to submit report
+  final submit = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF3E0),
+              shape: BoxShape.circle,
             ),
-            child: const Text('End Session'),
+            child: const Icon(
+              Icons.upload_file_outlined,
+              color: Color(0xFFFF6B00),
+              size: 40,
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Submit Report Now?',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'You can submit this session\'s attendance report '
+            'to SEG central repository now, or later from '
+            'session details.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF666666),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Later'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Submit'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    );
+    ),
+  );
 
-    if (confirm != true) return;
-
-    _stopNfcListening();
-    final ok =
-        await context.read<AttendanceProvider>().endSession();
-    if (ok && mounted) {
-      _showSnack('Session ended');
-      Navigator.pop(context);
+  if (submit == true && mounted) {
+    try {
+      await ApiService()
+          .submitSessionReport(widget.sessionId);
+      if (mounted) _showSnack('Report submitted ✓');
+    } catch (_) {
+      if (mounted) {
+        _showSnack('Failed to submit report', isError: true);
+      }
     }
   }
 
+  if (mounted) Navigator.pop(context);
+}
   Future<void> _openFingerprintPicker() async {
     final prov = context.read<AttendanceProvider>();
     if (prov.session == null) return;

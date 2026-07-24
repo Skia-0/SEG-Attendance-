@@ -215,4 +215,67 @@ class ApiService {
   Future<Response> getAttendance(String sessionId) {
     return _dio.get('/attendance/$sessionId');
   }
+    // ─── COORDINATOR PROFILE ─────────────────────────────
+  Future<Response> getMe() {
+    return _dio.get('/auth/me');
+  }
+
+  Future<Response> updateMe({required String fullName}) {
+    return _dio.patch('/auth/me', data: {
+      'full_name': fullName,
+    });
+  }
+
+  Future<Response> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) {
+    return _dio.post('/auth/change-password', data: {
+      'old_password': oldPassword,
+      'new_password': newPassword,
+    });
+  }
+
+  // ─── LEARNERS EXTRA ──────────────────────────────────
+  Future<Response> getLearner(String learnerId) {
+    return _dio.get('/learners/$learnerId');
+  }
+
+  Future<Response> updateLearner({
+    required String learnerId,
+    String? fullName,
+    String? phone,
+    String? nfcUid,
+  }) {
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName;
+    if (phone != null) data['phone'] = phone;
+    if (nfcUid != null) data['nfc_uid'] = nfcUid;
+    return _dio.patch('/learners/$learnerId', data: data);
+  }
+
+  Future<Response> deleteLearner(String learnerId) {
+    return _dio.delete('/learners/$learnerId');
+  }
+
+  // ─── COHORT DELETE ───────────────────────────────────
+  Future<Response> deleteCohort(String cohortId) {
+    return _dio.delete('/cohorts/$cohortId');
+  }
+
+  // ─── REPORTS ─────────────────────────────────────────
+  Future<Response> submitSessionReport(String sessionId) {
+    return _dio.post('/reports/session/$sessionId');
+  }
+
+  Future<Response> submitCohortFinalReport(String cohortId) {
+    return _dio.post('/reports/cohort/$cohortId/final');
+  }
+
+  Future<Response> listReports({String? hubId, String? type}) {
+    final params = <String, dynamic>{};
+    if (hubId != null) params['hub_id'] = hubId;
+    if (type != null) params['type'] = type;
+    return _dio.get('/reports', queryParameters: params);
+  }
 }

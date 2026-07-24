@@ -5,6 +5,7 @@ import '../providers/cohort_provider.dart';
 import '../models/cohort.dart';
 import 'create_cohort_screen.dart';
 import 'cohort_detail_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,32 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<CohortProvider>().loadCohorts();
   }
 
-  void _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true && mounted) {
-      await context.read<AuthProvider>().logout();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -63,8 +38,15 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('SEG ATTENDANCE'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -73,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onRefresh: _refresh,
         child: CustomScrollView(
           slivers: [
-            // Header
             SliverToBoxAdapter(
               child: Container(
                 width: double.infinity,
@@ -132,8 +113,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
-            // Section title
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
@@ -159,8 +138,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
-            // Content
             if (cohortProvider.loading)
               const SliverFillRemaining(
                 child: Center(
@@ -199,7 +176,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-
             const SliverToBoxAdapter(
               child: SizedBox(height: 100),
             ),

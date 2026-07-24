@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
 import 'providers/cohort_provider.dart';
 import 'providers/attendance_provider.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +19,7 @@ class SEGApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CohortProvider()),
-        ChangeNotifierProvider(create: (_) => AttendanceProvider())
+        ChangeNotifierProvider(create: (_) => AttendanceProvider()),
       ],
       child: MaterialApp(
         title: 'SEG Attendance',
@@ -111,48 +110,8 @@ class SEGApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const AuthGate(),
+        home: const SplashScreen(),
       ),
     );
-  }
-}
-
-class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
-
-  @override
-  State<AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<AuthGate> {
-  bool _checking = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  Future<void> _check() async {
-    await context.read<AuthProvider>().loadFromStorage();
-    if (mounted) setState(() => _checking = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_checking) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFFFF6B00),
-          ),
-        ),
-      );
-    }
-    final auth = context.watch<AuthProvider>();
-    return auth.isLoggedIn
-        ? const HomeScreen()
-        : const LoginScreen();
   }
 }

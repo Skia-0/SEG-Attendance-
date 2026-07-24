@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/cohort.dart';
-import 'register_learner_screen.dart';
 import 'start_session_screen.dart';
 import 'summary_screen.dart';
+import 'learners_list_screen.dart';
+import 'session_detail_screen.dart';
 
 class CohortDetailScreen extends StatefulWidget {
   final String cohortId;
@@ -52,11 +53,11 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     }
   }
 
-  void _registerLearner() async {
+  void _openLearners() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RegisterLearnerScreen(
+        builder: (_) => LearnersListScreen(
           cohortId: widget.cohortId,
           cohortName: _cohort!.name,
         ),
@@ -66,16 +67,17 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
   }
 
   void _viewSummary() {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => SummaryScreen(
-        cohortId: widget.cohortId,
-        cohortName: _cohort!.name,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SummaryScreen(
+          cohortId: widget.cohortId,
+          cohortName: _cohort!.name,
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
+
   void _startNewSession() async {
     await Navigator.push(
       context,
@@ -89,6 +91,110 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     _load();
   }
 
+  Future<void> _confirmDelete() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Cohort?'),
+        content: Text(
+          'This will permanently delete "${_cohort?.name ?? "this cohort"}", '
+          'all its sessions, learners, and attendance records. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _api.deleteCohort(widget.cohortId);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cohort deleted'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to delete cohort'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _submitFinalReport() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Submit Final Report?'),
+        content: const Text(
+          'This will submit the final attendance report for '
+          'this cohort to the SEG central repository. '
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _api.submitCohortFinalReport(widget.cohortId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted to SEG ✓'),
+            backgroundColor: Color(0xFFFF6B00),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      final msg = e.toString().contains('already submitted')
+          ? 'Report already submitted for this cohort'
+          : 'Failed to submit report';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,6 +205,26 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              if (v == 'delete') _confirmDelete();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete Cohort'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: _loading
           ? const Center(
@@ -190,21 +316,39 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
   Widget _buildActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _ActionButton(
-              icon: Icons.person_add_outlined,
-              label: 'Add Learner',
-              onTap: _registerLearner,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _ActionButton(
+                  icon: Icons.people_outline,
+                  label: 'Learners',
+                  onTap: _openLearners,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ActionButton(
+                  icon: Icons.bar_chart_outlined,
+                  label: 'Summary',
+                  onTap: _viewSummary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _ActionButton(
-              icon: Icons.bar_chart_outlined,
-              label: 'Summary',
-              onTap: _viewSummary,
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _submitFinalReport,
+              icon: const Icon(Icons.upload_file_outlined),
+              label: const Text('Submit Final Report To SEG'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFF6B00),
+                side: const BorderSide(color: Color(0xFFFF6B00)),
+                minimumSize: const Size(double.infinity, 46),
+              ),
             ),
           ),
         ],
@@ -276,7 +420,8 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
             )
           else
             ..._sessions
-                .map((s) => _SessionTile(session: s))
+                .map((s) => _SessionTile(session: s,
+                    cohortName: _cohort!.name,))
                 .toList(),
         ],
       ),
@@ -367,11 +512,16 @@ class _ActionButton extends StatelessWidget {
 
 class _SessionTile extends StatelessWidget {
   final dynamic session;
-  const _SessionTile({required this.session});
+  final String cohortName;
+  const _SessionTile({
+    required this.session,
+    required this.cohortName,
+  });
 
   @override
   Widget build(BuildContext context) {
     final title = session['title'] ?? 'Session';
+    final sessionId = session['session_id']?.toString() ?? '';
     final endedAt = session['ended_at'];
     final checkinOpen = session['checkin_open'] == true;
     final checkoutOpen = session['checkout_open'] == true;
@@ -396,76 +546,94 @@ class _SessionTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFEEEEEE)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                color: statusColor,
-                borderRadius: BorderRadius.circular(2),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SessionDetailScreen(
+                  sessionId: sessionId,
+                  cohortName: cohortName,
+                ),
               ),
+            );
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFEEEEEE)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor,
-                          ),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A1A),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$attendance attended',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF888888),
-                        ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius:
+                                  BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$attendance attended',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF888888),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: Color(0xFF888888),
+                ),
+              ],
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 14,
-              color: Color(0xFF888888),
-            ),
-          ],
+          ),
         ),
       ),
     );
