@@ -85,9 +85,9 @@ class ApiService {
     return _dio.get('/cohorts/code/$code');
   }
 
-  Future<Response> getMyCohorts(String hubId) {
-    return _dio.get('/cohorts?hub_id=$hubId');
-  }
+  Future<Response> getMyCohorts([String? hubId]) {
+  return _dio.get('/cohorts');
+}
 
   Future<Response> getCohortSummary(String cohortId) {
     return _dio.get('/cohorts/$cohortId/summary');
