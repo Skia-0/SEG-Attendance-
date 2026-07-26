@@ -253,3 +253,48 @@ class Report(db.Model):
                 self.submitted_at.isoformat()
                 if self.submitted_at else None,
         }
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+
+    log_id = db.Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=db.text("gen_random_uuid()")
+    )
+    coordinator_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("coordinators.coordinator_id",
+                      ondelete="SET NULL"),
+        nullable=True
+    )
+    hub_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("hubs.hub_id", ondelete="SET NULL"),
+        nullable=True
+    )
+    action = db.Column(db.String(100), nullable=False)
+    resource_type = db.Column(db.String(50), nullable=False)
+    resource_id = db.Column(db.String(100), nullable=True)
+    details = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        server_default=db.text("NOW()")
+    )
+
+    def to_dict(self):
+        return {
+            "log_id": str(self.log_id),
+            "coordinator_id":
+                str(self.coordinator_id)
+                if self.coordinator_id else None,
+            "hub_id":
+                str(self.hub_id) if self.hub_id else None,
+            "action": self.action,
+            "resource_type": self.resource_type,
+            "resource_id": self.resource_id,
+            "details": self.details,
+            "created_at":
+                self.created_at.isoformat()
+                if self.created_at else None,
+        }

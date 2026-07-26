@@ -1,14 +1,26 @@
 from datetime import datetime, date
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import Cohort, Learner, Session, AttendanceRecord, Coordinator
+from flask_jwt_extended import jwt_required
+from app.models import (
+    Cohort,
+    Learner,
+    Session,
+    AttendanceRecord,
+    Coordinator,
+)
 from app.extensions import db
+from app.utils import (
+    get_current_coordinator,
+    same_hub,
+    forbidden,
+    log_action,
+)
 
 cohorts_bp = Blueprint("cohorts", __name__)
 
 
 def generate_cohort_code(name, hub_id):
-    """Generate short cohort code like POU-001 based on name and hub."""
+    """Generate short cohort code like POU-001."""
     prefix = "".join(c for c in name.upper() if c.isalpha())[:3]
     if len(prefix) < 3:
         prefix = prefix.ljust(3, "X")
@@ -22,7 +34,6 @@ def generate_cohort_code(name, hub_id):
 
 
 def parse_date(value):
-    """Parse ISO date string to date object."""
     if not value:
         return None
     try:
@@ -37,9 +48,7 @@ def parse_date(value):
 @cohorts_bp.route("", methods=["POST"])
 @jwt_required()
 def create_cohort():
-    coordinator_id = get_jwt_identity()
-
-    coordinator = Coordinator.query.get(coordinator_id)
+    coordinator = get_current_coordinator()
     if not coordinator:
         return jsonify({"error": "Coordinator not found"}), 404
 
@@ -80,6 +89,9 @@ def create_cohort():
     db.session.add(cohort)
     db.session.commit()
 
+    log_action(coordinator, "cohort.created", "cohort",
+               cohort.cohort_id, {"name": name, "code": code})
+
     result = cohort.to_dict()
     result["code"] = code
     result["learner_count"] = 0
@@ -90,9 +102,7 @@ def create_cohort():
 @cohorts_bp.route("", methods=["GET"])
 @jwt_required()
 def list_my_cohorts():
-    coordinator_id = get_jwt_identity()
-
-    coordinator = Coordinator.query.get(coordinator_id)
+    coordinator = get_current_coordinator()
     if not coordinator:
         return jsonify({"error": "Coordinator not found"}), 404
 
@@ -117,6 +127,10 @@ def list_my_cohorts():
 @cohorts_bp.route("/<cohort_id>", methods=["GET"])
 @jwt_required()
 def get_cohort(cohort_id):
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     try:
         cohort = Cohort.query.get(cohort_id)
     except Exception:
@@ -124,6 +138,9 @@ def get_cohort(cohort_id):
 
     if not cohort:
         return jsonify({"error": "Cohort not found"}), 404
+
+    if not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to access this cohort")
 
     learner_count = Learner.query.filter_by(
         cohort_id=cohort.cohort_id
@@ -143,6 +160,10 @@ def get_cohort(cohort_id):
 @cohorts_bp.route("/<cohort_id>/summary", methods=["GET"])
 @jwt_required()
 def get_cohort_summary(cohort_id):
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     try:
         cohort = Cohort.query.get(cohort_id)
     except Exception:
@@ -150,6 +171,9 @@ def get_cohort_summary(cohort_id):
 
     if not cohort:
         return jsonify({"error": "Cohort not found"}), 404
+
+    if not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to access this cohort")
 
     sessions = Session.query.filter_by(
         cohort_id=cohort.cohort_id
@@ -189,12 +213,19 @@ def get_cohort_summary(cohort_id):
         })
 
     return jsonify(summary_list), 200
-    
-@cohorts_bp.route("/<cohort_id>", methods=["DELETE"])
+
+
+@cohorts_bp.route("/<cohort_id>/at-risk", methods=["GET"])
 @jwt_required()
-def delete_cohort(cohort_id):
-    coordinator_id = get_jwt_identity()
-    coordinator = Coordinator.query.get(coordinator_id)
+def get_at_risk_learners(cohort_id):
+    """
+    Returns learners currently below the cohort's minimum
+    attendance threshold. Useful mid-cohort to identify
+    learners in danger of not qualifying for certification.
+    """
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
 
     try:
         cohort = Cohort.query.get(cohort_id)
@@ -204,13 +235,78 @@ def delete_cohort(cohort_id):
     if not cohort:
         return jsonify({"error": "Cohort not found"}), 404
 
-    # Only allow deleting cohorts in your hub
-    if coordinator and str(cohort.hub_id) != str(coordinator.hub_id):
-        return jsonify({
-            "error": "Not authorized to delete this cohort"
-        }), 403
+    if not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to access this cohort")
 
+    sessions = Session.query.filter_by(
+        cohort_id=cohort.cohort_id
+    ).all()
+    session_ids = [str(s.session_id) for s in sessions]
+    total_sessions = len(sessions)
+
+    learners = Learner.query.filter_by(
+        cohort_id=cohort.cohort_id
+    ).order_by(Learner.full_name).all()
+
+    at_risk = []
+    for learner in learners:
+        sessions_attended = 0
+        if total_sessions > 0:
+            sessions_attended = AttendanceRecord.query.filter(
+                AttendanceRecord.learner_id == learner.learner_id,
+                AttendanceRecord.session_id.in_(session_ids),
+                AttendanceRecord.is_complete == True
+            ).count()
+
+        attendance_percent = (
+            sessions_attended / total_sessions * 100.0
+        ) if total_sessions > 0 else 100.0
+
+        if attendance_percent < cohort.min_attendance_percent:
+            gap = cohort.min_attendance_percent - attendance_percent
+            at_risk.append({
+                "learner_id": str(learner.learner_id),
+                "seg_id": learner.seg_id,
+                "full_name": learner.full_name,
+                "sessions_attended": sessions_attended,
+                "total_sessions": total_sessions,
+                "attendance_percent": round(attendance_percent, 2),
+                "gap_to_threshold": round(gap, 2),
+            })
+
+    return jsonify({
+        "cohort_id": str(cohort.cohort_id),
+        "cohort_name": cohort.name,
+        "min_attendance_percent": cohort.min_attendance_percent,
+        "total_sessions_so_far": total_sessions,
+        "at_risk_count": len(at_risk),
+        "learners": at_risk,
+    }), 200
+
+
+@cohorts_bp.route("/<cohort_id>", methods=["DELETE"])
+@jwt_required()
+def delete_cohort(cohort_id):
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    try:
+        cohort = Cohort.query.get(cohort_id)
+    except Exception:
+        cohort = None
+
+    if not cohort:
+        return jsonify({"error": "Cohort not found"}), 404
+
+    if not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to delete this cohort")
+
+    cohort_name = cohort.name
     db.session.delete(cohort)
     db.session.commit()
 
-    return jsonify({"message": "Cohort deleted"}), 200  
+    log_action(coordinator, "cohort.deleted", "cohort",
+               cohort_id, {"name": cohort_name})
+
+    return jsonify({"message": "Cohort deleted"}), 200

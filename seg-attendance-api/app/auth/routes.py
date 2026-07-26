@@ -1,16 +1,19 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     create_access_token,
+    create_refresh_token,
     jwt_required,
     get_jwt_identity,
 )
 from app.models import Coordinator, Hub
-from app.extensions import db
+from app.extensions import db, limiter
+from app.utils import log_action
 
 auth_bp = Blueprint("auth", __name__)
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("5 per hour")
 def register():
     data = request.get_json() or {}
     full_name = (data.get("full_name") or "").strip()
@@ -28,14 +31,12 @@ def register():
             "error": "Password must be at least 6 characters"
         }), 400
 
-    # Check phone not already taken
     existing = Coordinator.query.filter_by(phone=phone).first()
     if existing:
         return jsonify({
             "error": "A coordinator with this phone number already exists"
         }), 409
 
-    # Verify hub exists
     try:
         hub = Hub.query.get(hub_id)
     except Exception:
@@ -44,7 +45,6 @@ def register():
     if not hub:
         return jsonify({"error": "Hub not found"}), 404
 
-    # Create coordinator
     coordinator = Coordinator(
         full_name=full_name,
         phone=phone,
@@ -54,6 +54,10 @@ def register():
 
     db.session.add(coordinator)
     db.session.commit()
+
+    log_action(coordinator, "coordinator.registered",
+               "coordinator", coordinator.coordinator_id,
+               {"phone": phone, "hub_id": str(hub_id)})
 
     return jsonify({
         "message": "Account created successfully",
@@ -65,6 +69,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     data = request.get_json() or {}
     phone = (data.get("phone") or "").strip()
@@ -83,19 +88,35 @@ def login():
     hub = Hub.query.get(coordinator.hub_id)
     hub_name = hub.name if hub else ""
 
-    access_token = create_access_token(
-        identity=str(coordinator.coordinator_id)
-    )
+    identity = str(coordinator.coordinator_id)
+    access_token = create_access_token(identity=identity)
+    refresh_token = create_refresh_token(identity=identity)
+
+    log_action(coordinator, "coordinator.login",
+               "coordinator", coordinator.coordinator_id)
 
     return jsonify({
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "coordinator_name": coordinator.full_name,
         "coordinator_id": str(coordinator.coordinator_id),
         "hub_id": str(coordinator.hub_id),
         "hub_name": hub_name
     }), 200
 
-from flask_jwt_extended import get_jwt_identity
+
+@auth_bp.route("/refresh", methods=["POST"])
+@jwt_required(refresh=True)
+@limiter.limit("60 per hour")
+def refresh():
+    """Exchange a refresh token for a new access token."""
+    identity = get_jwt_identity()
+    coordinator = Coordinator.query.get(identity)
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    access_token = create_access_token(identity=identity)
+    return jsonify({"access_token": access_token}), 200
 
 
 @auth_bp.route("/me", methods=["GET"])
@@ -132,11 +153,16 @@ def update_me():
         coordinator.full_name = name
 
     db.session.commit()
+
+    log_action(coordinator, "coordinator.profile_updated",
+               "coordinator", coordinator.coordinator_id)
+
     return jsonify(coordinator.to_dict()), 200
 
 
 @auth_bp.route("/change-password", methods=["POST"])
 @jwt_required()
+@limiter.limit("5 per hour")
 def change_password():
     coordinator_id = get_jwt_identity()
     coordinator = Coordinator.query.get(coordinator_id)
@@ -159,4 +185,8 @@ def change_password():
 
     coordinator.set_password(new_password)
     db.session.commit()
+
+    log_action(coordinator, "coordinator.password_changed",
+               "coordinator", coordinator.coordinator_id)
+
     return jsonify({"message": "Password updated"}), 200

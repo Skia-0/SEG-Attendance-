@@ -1,15 +1,41 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from app.models import AttendanceRecord, Session, Learner
+from app.models import AttendanceRecord, Session, Learner, Cohort
 from app.extensions import db
+from app.utils import (
+    get_current_coordinator,
+    same_hub,
+    forbidden,
+    log_action,
+)
 from datetime import datetime
 
 attendance_bp = Blueprint("attendance", __name__)
 
 
+def _get_owned_session_or_response(session_id, coordinator):
+    try:
+        session = Session.query.get(session_id)
+    except Exception:
+        session = None
+
+    if not session:
+        return None, (jsonify({"error": "Session not found"}), 404)
+
+    cohort = Cohort.query.get(session.cohort_id)
+    if not cohort or not same_hub(coordinator, cohort.hub_id):
+        return None, forbidden("Not authorized to access this session")
+
+    return session, None
+
+
 @attendance_bp.route("/checkin", methods=["POST"])
 @jwt_required()
 def checkin():
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     data = request.get_json() or {}
     session_id = data.get("session_id")
     learner_id = data.get("learner_id")
@@ -25,13 +51,9 @@ def checkin():
             "error": "verification_method must be either 'fingerprint' or 'nfc'"
         }), 400
 
-    try:
-        session = Session.query.get(session_id)
-    except Exception:
-        session = None
-
-    if not session:
-        return jsonify({"error": "Session not found"}), 404
+    session, err = _get_owned_session_or_response(session_id, coordinator)
+    if err:
+        return err
 
     if session.ended_at is not None:
         return jsonify({"error": "Session has already ended"}), 400
@@ -46,6 +68,11 @@ def checkin():
 
     if not learner:
         return jsonify({"error": "Learner not found"}), 404
+
+    if str(learner.cohort_id) != str(session.cohort_id):
+        return jsonify({
+            "error": "Learner does not belong to this session's cohort"
+        }), 400
 
     record = AttendanceRecord.query.filter_by(
         session_id=session.session_id,
@@ -72,12 +99,21 @@ def checkin():
 
     db.session.commit()
 
+    log_action(coordinator, "attendance.checkin", "attendance",
+               record.record_id,
+               {"learner_id": str(learner.learner_id),
+                "method": verification_method})
+
     return jsonify(record.to_dict()), 200
 
 
 @attendance_bp.route("/checkout", methods=["POST"])
 @jwt_required()
 def checkout():
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     data = request.get_json() or {}
     session_id = data.get("session_id")
     learner_id = data.get("learner_id")
@@ -93,13 +129,9 @@ def checkout():
             "error": "verification_method must be either 'fingerprint' or 'nfc'"
         }), 400
 
-    try:
-        session = Session.query.get(session_id)
-    except Exception:
-        session = None
-
-    if not session:
-        return jsonify({"error": "Session not found"}), 404
+    session, err = _get_owned_session_or_response(session_id, coordinator)
+    if err:
+        return err
 
     if session.ended_at is not None:
         return jsonify({"error": "Session has already ended"}), 400
@@ -114,6 +146,11 @@ def checkout():
 
     if not learner:
         return jsonify({"error": "Learner not found"}), 404
+
+    if str(learner.cohort_id) != str(session.cohort_id):
+        return jsonify({
+            "error": "Learner does not belong to this session's cohort"
+        }), 400
 
     record = AttendanceRecord.query.filter_by(
         session_id=session.session_id,
@@ -136,30 +173,32 @@ def checkout():
 
     db.session.commit()
 
+    log_action(coordinator, "attendance.checkout", "attendance",
+               record.record_id,
+               {"learner_id": str(learner.learner_id),
+                "method": verification_method})
+
     return jsonify(record.to_dict()), 200
 
 
 @attendance_bp.route("/<session_id>", methods=["GET"])
 @jwt_required()
 def get_attendance_records(session_id):
-    try:
-        session = Session.query.get(session_id)
-    except Exception:
-        session = None
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
 
-    if not session:
-        return jsonify({"error": "Session not found"}), 404
+    session, err = _get_owned_session_or_response(session_id, coordinator)
+    if err:
+        return err
 
-    # All learners in this cohort
     learners = Learner.query.filter_by(
         cohort_id=session.cohort_id
     ).order_by(Learner.full_name).all()
 
-    # Existing records for this session
     records = AttendanceRecord.query.filter_by(
         session_id=session.session_id
     ).all()
-
     records_by_learner = {str(r.learner_id): r for r in records}
 
     results = []
