@@ -19,6 +19,13 @@ class AuthProvider extends ChangeNotifier {
   String? get hubId => _hubId;
   String? get hubName => _hubName;
 
+  AuthProvider() {
+    // When API detects session fully expired, force logout
+    _api.onSessionExpired = () async {
+      await logout();
+    };
+  }
+
   Future<void> loadFromStorage() async {
     _token = await _storage.getToken();
     _coordinatorName = await _storage.getValue('coordinator_name');
@@ -32,47 +39,53 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<String?> login(String phone, String password) async {
-  try {
-    final response = await _api.login(phone, password);
-    final data = response.data;
+    try {
+      final response = await _api.login(phone, password);
+      final data = response.data;
 
-    _token = data['access_token'];
-    _coordinatorName = data['coordinator_name'];
-    _coordinatorId = data['coordinator_id']?.toString();
-    _hubId = data['hub_id']?.toString();
-    _hubName = data['hub_name']?.toString();
+      _token = data['access_token'];
+      final refreshToken = data['refresh_token'];
+      _coordinatorName = data['coordinator_name'];
+      _coordinatorId = data['coordinator_id']?.toString();
+      _hubId = data['hub_id']?.toString();
+      _hubName = data['hub_name']?.toString();
 
-    await _storage.saveToken(_token!);
-    await _storage.saveValue(
-        'coordinator_name', _coordinatorName ?? '');
-    await _storage.saveValue(
-        'coordinator_id', _coordinatorId ?? '');
-    await _storage.saveValue('hub_id', _hubId ?? '');
-    await _storage.saveValue('hub_name', _hubName ?? '');
+      await _storage.saveToken(_token!);
+      if (refreshToken != null) {
+        await _storage.saveRefreshToken(refreshToken);
+      }
+      await _storage.saveValue(
+          'coordinator_name', _coordinatorName ?? '');
+      await _storage.saveValue(
+          'coordinator_id', _coordinatorId ?? '');
+      await _storage.saveValue('hub_id', _hubId ?? '');
+      await _storage.saveValue('hub_name', _hubName ?? '');
 
-    _api.setToken(_token!);
-    notifyListeners();
-    return null;
-  } catch (e) {
-    // Better error messages
-    final error = e.toString();
-    if (error.contains('SocketException') ||
-        error.contains('Failed host lookup')) {
-      return 'No internet connection. Check your network.';
+      _api.setToken(_token!);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      final error = e.toString();
+      if (error.contains('SocketException') ||
+          error.contains('Failed host lookup')) {
+        return 'No internet connection. Check your network.';
+      }
+      if (error.contains('TimeoutException') ||
+          error.contains('timeout')) {
+        return 'Server is waking up. Please try again in 30 seconds.';
+      }
+      if (error.contains('429')) {
+        return 'Too many login attempts. Wait a minute and try again.';
+      }
+      if (error.contains('401')) {
+        return 'Invalid phone number or password.';
+      }
+      if (error.contains('404')) {
+        return 'Server not found. Contact admin.';
+      }
+      return 'Login failed. Please try again.';
     }
-    if (error.contains('TimeoutException') ||
-        error.contains('timeout')) {
-      return 'Server is waking up. Please try again in 30 seconds.';
-    }
-    if (error.contains('401')) {
-      return 'Invalid phone number or password.';
-    }
-    if (error.contains('404')) {
-      return 'Server not found. Contact admin.';
-    }
-    return 'Login failed: ${error.split(":").first}';
   }
-}
 
   Future<void> logout() async {
     _token = null;

@@ -8,6 +8,7 @@ class SecureStorageService {
   );
 
   static const _tokenKey = 'jwt_token';
+  static const _refreshKey = 'refresh_token';
 
   Future<void> saveToken(String token) async {
     await _storage.write(key: _tokenKey, value: token);
@@ -15,6 +16,14 @@ class SecureStorageService {
 
   Future<String?> getToken() async {
     return await _storage.read(key: _tokenKey);
+  }
+
+  Future<void> saveRefreshToken(String token) async {
+    await _storage.write(key: _refreshKey, value: token);
+  }
+
+  Future<String?> getRefreshToken() async {
+    return await _storage.read(key: _refreshKey);
   }
 
   Future<void> saveValue(String key, String value) async {

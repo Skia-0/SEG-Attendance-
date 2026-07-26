@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import '../config/api_config.dart';
+import 'secure_storage_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal();
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -14,6 +14,71 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
     ),
   );
+
+  final _storage = SecureStorageService();
+  bool _isRefreshing = false;
+  Function()? onSessionExpired;
+
+  ApiService._internal() {
+    _setupInterceptors();
+  }
+
+  void _setupInterceptors() {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException error, handler) async {
+          // Handle 401 (expired token) with automatic refresh
+          if (error.response?.statusCode == 401 &&
+              !_isRefreshing &&
+              error.requestOptions.path != '/auth/login' &&
+              error.requestOptions.path != '/auth/refresh') {
+            _isRefreshing = true;
+
+            try {
+              final refreshToken = await _storage.getRefreshToken();
+              if (refreshToken == null) {
+                _isRefreshing = false;
+                _handleSessionExpired();
+                return handler.next(error);
+              }
+
+              // Try to refresh
+              final refreshDio = Dio(
+                BaseOptions(baseUrl: ApiConfig.baseUrl),
+              );
+              refreshDio.options.headers['Authorization'] =
+                  'Bearer $refreshToken';
+
+              final refreshResponse = await refreshDio.post('/auth/refresh');
+              final newAccessToken = refreshResponse.data['access_token'];
+
+              // Save new token
+              await _storage.saveToken(newAccessToken);
+              setToken(newAccessToken);
+
+              // Retry original request with new token
+              error.requestOptions.headers['Authorization'] =
+                  'Bearer $newAccessToken';
+              final retryResponse = await _dio.fetch(error.requestOptions);
+              _isRefreshing = false;
+              return handler.resolve(retryResponse);
+            } catch (_) {
+              _isRefreshing = false;
+              _handleSessionExpired();
+              return handler.next(error);
+            }
+          }
+          return handler.next(error);
+        },
+      ),
+    );
+  }
+
+  void _handleSessionExpired() {
+    if (onSessionExpired != null) {
+      onSessionExpired!();
+    }
+  }
 
   void setToken(String token) {
     _dio.options.headers['Authorization'] = 'Bearer $token';
@@ -86,11 +151,15 @@ class ApiService {
   }
 
   Future<Response> getMyCohorts([String? hubId]) {
-  return _dio.get('/cohorts');
-}
+    return _dio.get('/cohorts');
+  }
 
   Future<Response> getCohortSummary(String cohortId) {
     return _dio.get('/cohorts/$cohortId/summary');
+  }
+
+  Future<Response> getAtRiskLearners(String cohortId) {
+    return _dio.get('/cohorts/$cohortId/at-risk');
   }
 
   // ─── LEARNERS ────────────────────────────────────────
@@ -215,7 +284,8 @@ class ApiService {
   Future<Response> getAttendance(String sessionId) {
     return _dio.get('/attendance/$sessionId');
   }
-    // ─── COORDINATOR PROFILE ─────────────────────────────
+
+  // ─── COORDINATOR PROFILE ─────────────────────────────
   Future<Response> getMe() {
     return _dio.get('/auth/me');
   }
