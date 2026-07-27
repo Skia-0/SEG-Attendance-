@@ -14,11 +14,6 @@ sessions_bp = Blueprint("sessions", __name__)
 
 
 def _get_owned_session_or_response(session_id, coordinator):
-    """
-    Shared lookup: resolves session, then checks coordinator's hub
-    against session's cohort's hub. Returns (session, None) on
-    success, or (None, response) on failure.
-    """
     try:
         session = Session.query.get(session_id)
     except Exception:
@@ -62,6 +57,30 @@ def create_session():
         return forbidden(
             "Not authorized to create a session for this cohort"
         )
+
+    # Fix 1: Prevent duplicate session titles in same cohort
+    existing_title = Session.query.filter_by(
+        cohort_id=cohort.cohort_id,
+        title=title
+    ).first()
+    if existing_title:
+        return jsonify({
+            "error": "A session with this title already exists in this cohort"
+        }), 409
+
+    # Fix 2: Only one active session per cohort
+    active_session = Session.query.filter_by(
+        cohort_id=cohort.cohort_id,
+        ended_at=None
+    ).first()
+    if active_session:
+        return jsonify({
+            "error": "Cannot start a new session. "
+                     "Another session is still active. "
+                     "End it before starting a new one.",
+            "active_session_id": str(active_session.session_id),
+            "active_session_title": active_session.title
+        }), 409
 
     session = Session(
         cohort_id=cohort.cohort_id,
@@ -162,6 +181,18 @@ def update_checkin_state(session_id):
         return jsonify({"error": "open field is required"}), 400
 
     is_open = bool(open_state)
+
+    # Fix 3: Auto-close check-in/out on other sessions in same cohort
+    if is_open:
+        other_sessions = Session.query.filter(
+            Session.cohort_id == session.cohort_id,
+            Session.session_id != session.session_id,
+            Session.ended_at.is_(None)
+        ).all()
+        for other in other_sessions:
+            other.checkin_open = False
+            other.checkout_open = False
+
     session.checkin_open = is_open
 
     if is_open:
@@ -200,6 +231,18 @@ def update_checkout_state(session_id):
         return jsonify({"error": "open field is required"}), 400
 
     is_open = bool(open_state)
+
+    # Fix 3: Auto-close check-in/out on other sessions in same cohort
+    if is_open:
+        other_sessions = Session.query.filter(
+            Session.cohort_id == session.cohort_id,
+            Session.session_id != session.session_id,
+            Session.ended_at.is_(None)
+        ).all()
+        for other in other_sessions:
+            other.checkin_open = False
+            other.checkout_open = False
+
     session.checkout_open = is_open
 
     if is_open:
@@ -226,13 +269,41 @@ def end_session(session_id):
     if err:
         return err
 
+    if session.ended_at is not None:
+        return jsonify({
+            "error": "Session has already ended"
+        }), 400
+
+    # Fix 4: Check if there are pending learners (checked in, not out)
+    pending_count = AttendanceRecord.query.filter_by(
+        session_id=session.session_id,
+        checked_out_at=None
+    ).filter(
+        AttendanceRecord.checked_in_at.isnot(None)
+    ).count()
+
+    data = request.get_json() or {}
+    reason = (data.get("reason") or "").strip()
+
+    if pending_count > 0 and not reason:
+        return jsonify({
+            "error": "Session has learners who have not checked out. "
+                     "A reason is required to end early.",
+            "pending_count": pending_count,
+            "requires_reason": True
+        }), 400
+
     session.ended_at = datetime.utcnow()
     session.checkin_open = False
     session.checkout_open = False
 
     db.session.commit()
 
+    log_details = {"pending_learners": pending_count}
+    if reason:
+        log_details["reason"] = reason
+
     log_action(coordinator, "session.ended", "session",
-               session.session_id)
+               session.session_id, log_details)
 
     return jsonify(session.to_dict()), 200
