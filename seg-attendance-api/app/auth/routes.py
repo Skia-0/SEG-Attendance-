@@ -1,3 +1,5 @@
+import re
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     create_access_token,
@@ -10,6 +12,46 @@ from app.extensions import db, limiter
 from app.utils import log_action
 
 auth_bp = Blueprint("auth", __name__)
+
+# Lockout configuration
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 30
+
+
+def _validate_password(password):
+    if not password or len(password) < 8:
+        return "Password must be at least 8 characters"
+    if len(password) > 32:
+        return "Password must not exceed 32 characters"
+    if not re.search(r"[A-Za-z]", password):
+        return "Password must contain at least one letter"
+    if not re.search(r"\d", password):
+        return "Password must contain at least one number"
+    return None
+
+
+def _log_failed_login(phone, reason):
+    """
+    Log failed login attempt without user context (coordinator may not exist).
+    Uses direct DB insert to avoid circular deps.
+    """
+    try:
+        from app.models import AuditLog
+        entry = AuditLog(
+            coordinator_id=None,
+            hub_id=None,
+            action="coordinator.login_failed",
+            resource_type="coordinator",
+            resource_id=phone,
+            details={"reason": reason},
+        )
+        db.session.add(entry)
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -26,10 +68,9 @@ def register():
             "error": "Full name, phone, password and hub_id are required"
         }), 400
 
-    if len(password) < 6:
-        return jsonify({
-            "error": "Password must be at least 6 characters"
-        }), 400
+    pw_error = _validate_password(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     existing = Coordinator.query.filter_by(phone=phone).first()
     if existing:
@@ -69,7 +110,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("5 per minute")
 def login():
     data = request.get_json() or {}
     phone = (data.get("phone") or "").strip()
@@ -82,8 +123,63 @@ def login():
 
     coordinator = Coordinator.query.filter_by(phone=phone).first()
 
-    if not coordinator or not coordinator.check_password(password):
+    # Non-existent account — return generic error but log for monitoring
+    if not coordinator:
+        _log_failed_login(phone, "unknown_phone")
         return jsonify({"error": "Invalid credentials"}), 401
+
+    # Check if account is locked
+    now = datetime.utcnow()
+    if coordinator.locked_until and coordinator.locked_until > now:
+        minutes_left = int(
+            (coordinator.locked_until - now).total_seconds() // 60
+        ) + 1
+        _log_failed_login(phone, "account_locked")
+        return jsonify({
+            "error": f"Account locked due to too many failed attempts. "
+                     f"Try again in {minutes_left} minute(s)."
+        }), 423  # 423 Locked
+
+    # Check password
+    if not coordinator.check_password(password):
+        coordinator.failed_login_attempts = (
+            (coordinator.failed_login_attempts or 0) + 1
+        )
+        coordinator.last_failed_login_at = now
+
+        # Lock account if too many failures
+        if coordinator.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+            coordinator.locked_until = now + timedelta(
+                minutes=LOCKOUT_DURATION_MINUTES
+            )
+            db.session.commit()
+
+            _log_failed_login(phone,
+                              f"account_locked_after_{coordinator.failed_login_attempts}_attempts")
+
+            log_action(coordinator, "coordinator.account_locked",
+                       "coordinator", coordinator.coordinator_id,
+                       {"failed_attempts": coordinator.failed_login_attempts,
+                        "locked_for_minutes": LOCKOUT_DURATION_MINUTES})
+
+            return jsonify({
+                "error": f"Too many failed attempts. "
+                         f"Account locked for {LOCKOUT_DURATION_MINUTES} minutes."
+            }), 423
+
+        remaining = MAX_FAILED_ATTEMPTS - coordinator.failed_login_attempts
+        db.session.commit()
+
+        _log_failed_login(phone, "wrong_password")
+
+        return jsonify({
+            "error": f"Invalid credentials. {remaining} attempt(s) remaining."
+        }), 401
+
+    # Success — reset counters
+    coordinator.failed_login_attempts = 0
+    coordinator.locked_until = None
+    coordinator.last_failed_login_at = None
 
     hub = Hub.query.get(coordinator.hub_id)
     hub_name = hub.name if hub else ""
@@ -91,6 +187,8 @@ def login():
     identity = str(coordinator.coordinator_id)
     access_token = create_access_token(identity=identity)
     refresh_token = create_refresh_token(identity=identity)
+
+    db.session.commit()
 
     log_action(coordinator, "coordinator.login",
                "coordinator", coordinator.coordinator_id)
@@ -109,7 +207,6 @@ def login():
 @jwt_required(refresh=True)
 @limiter.limit("60 per hour")
 def refresh():
-    """Exchange a refresh token for a new access token."""
     identity = get_jwt_identity()
     coordinator = Coordinator.query.get(identity)
     if not coordinator:
@@ -178,10 +275,9 @@ def change_password():
             "error": "Current password is incorrect"
         }), 401
 
-    if len(new_password) < 6:
-        return jsonify({
-            "error": "New password must be at least 6 characters"
-        }), 400
+    pw_error = _validate_password(new_password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     coordinator.set_password(new_password)
     db.session.commit()

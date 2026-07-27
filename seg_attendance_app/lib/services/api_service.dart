@@ -167,18 +167,34 @@ class ApiService {
 
   // ─── LEARNERS ────────────────────────────────────────
   Future<Response> registerLearner({
-    required String fullName,
-    String? phone,
-    required String cohortId,
-    String? nfcUid,
-  }) {
-    return _dio.post('/learners', data: {
-      'full_name': fullName,
-      'phone': phone,
-      'cohort_id': cohortId,
-      'nfc_uid': nfcUid,
-    });
-  }
+  required String fullName,
+  String? phone,
+  required String cohortId,
+  String? nfcUid,
+}) {
+  return _dio.post('/learners', data: {
+    'full_name': fullName,
+    'phone': phone,
+    'cohort_id': cohortId,
+    'nfc_uid': nfcUid,
+  });
+}
+
+  Future<Response> registerLearnerWithConfirm({
+  required String fullName,
+  String? phone,
+  required String cohortId,
+  String? nfcUid,
+  bool confirmDuplicate = false,
+}) {
+  return _dio.post('/learners', data: {
+    'full_name': fullName,
+    'phone': phone,
+    'cohort_id': cohortId,
+    'nfc_uid': nfcUid,
+    'confirm_duplicate': confirmDuplicate,
+  });
+}
 
   Future<Response> getLearnersBycohort(String cohortId) {
     return _dio.get('/learners?cohort_id=$cohortId');

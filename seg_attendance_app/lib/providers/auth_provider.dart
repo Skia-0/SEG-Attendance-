@@ -20,7 +20,6 @@ class AuthProvider extends ChangeNotifier {
   String? get hubName => _hubName;
 
   AuthProvider() {
-    // When API detects session fully expired, force logout
     _api.onSessionExpired = () async {
       await logout();
     };
@@ -66,6 +65,17 @@ class AuthProvider extends ChangeNotifier {
       return null;
     } catch (e) {
       final error = e.toString();
+
+      // Try to extract exact backend error message from response
+      String? backendMessage;
+      try {
+        final resp = (e as dynamic).response;
+        final msg = resp?.data?['error'];
+        if (msg != null) {
+          backendMessage = msg.toString();
+        }
+      } catch (_) {}
+
       if (error.contains('SocketException') ||
           error.contains('Failed host lookup')) {
         return 'No internet connection. Check your network.';
@@ -74,11 +84,18 @@ class AuthProvider extends ChangeNotifier {
           error.contains('timeout')) {
         return 'Server is waking up. Please try again in 30 seconds.';
       }
+      if (error.contains('423')) {
+        // Account locked
+        return backendMessage ??
+            'Account locked. Try again later.';
+      }
       if (error.contains('429')) {
-        return 'Too many login attempts. Wait a minute and try again.';
+        return 'Too many login attempts. Wait 1 minute and try again.';
       }
       if (error.contains('401')) {
-        return 'Invalid phone number or password.';
+        // May include remaining attempts info from backend
+        return backendMessage ??
+            'Invalid phone number or password.';
       }
       if (error.contains('404')) {
         return 'Server not found. Contact admin.';

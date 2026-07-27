@@ -60,6 +60,12 @@ class Coordinator(db.Model):
     password_hash = db.Column(db.Text, nullable=False)
     hub_id = db.Column(UUID(as_uuid=True), db.ForeignKey("hubs.hub_id", ondelete="CASCADE"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, server_default=db.text("NOW()"))
+    failed_login_attempts = db.Column(
+        db.Integer, default=0, nullable=False,
+        server_default="0"
+    )
+    locked_until = db.Column(db.DateTime, nullable=True)
+    last_failed_login_at = db.Column(db.DateTime, nullable=True)
 
     # Relationships
     hub = db.relationship("Hub", back_populates="coordinators")

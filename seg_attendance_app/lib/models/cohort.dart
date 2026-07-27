@@ -7,6 +7,8 @@ class Cohort {
   final int minAttendancePercent;
   final int learnerCount;
   final int sessionCount;
+  final int? expectedSessions;
+  final bool hasActiveSession;
   final String? code;
 
   Cohort({
@@ -18,6 +20,8 @@ class Cohort {
     required this.minAttendancePercent,
     this.learnerCount = 0,
     this.sessionCount = 0,
+    this.expectedSessions,
+    this.hasActiveSession = false,
     this.code,
   });
 
@@ -32,6 +36,9 @@ class Cohort {
           (json['min_attendance_percent'] as num?)?.toInt() ?? 80,
       learnerCount: (json['learner_count'] as num?)?.toInt() ?? 0,
       sessionCount: (json['session_count'] as num?)?.toInt() ?? 0,
+      expectedSessions:
+          (json['expected_sessions'] as num?)?.toInt(),
+      hasActiveSession: json['has_active_session'] == true,
       code: json['code']?.toString(),
     );
   }

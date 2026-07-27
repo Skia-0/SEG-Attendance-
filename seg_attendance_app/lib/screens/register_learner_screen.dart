@@ -79,34 +79,35 @@ class _RegisterLearnerScreenState
   }
 
   Future<void> _enrollFingerprint() async {
-  final available = await _bio.isAvailable();
-  if (!available && mounted) {
-    _showError(
-      'Biometrics not available on this phone. '
-      'Please enroll a fingerprint in Settings first.',
+    final available = await _bio.isAvailable();
+    if (!available && mounted) {
+      _showError(
+        'Biometrics not available. '
+        'Please enroll a fingerprint in phone Settings first.',
+      );
+      return;
+    }
+
+    final error = await _bio.authenticate(
+      reason: 'Place learner\'s finger on sensor to enroll',
     );
-    return;
+
+    if (!mounted) return;
+
+    if (error == null) {
+      setState(() => _fingerprintEnrolled = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fingerprint enrolled'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      _showError(error);
+    }
   }
 
-  final error = await _bio.authenticate(
-    reason: 'Place learner\'s finger on sensor to enroll',
-  );
-
-  if (!mounted) return;
-
-  if (error == null) {
-    setState(() => _fingerprintEnrolled = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Fingerprint enrolled'),
-        backgroundColor: Color(0xFFFF6B00),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  } else {
-    _showError(error);
-  }
-}
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -117,7 +118,7 @@ class _RegisterLearnerScreenState
     );
   }
 
-  Future<void> _register() async {
+  Future<void> _register({bool confirmDuplicate = false}) async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_nfcUid == null && !_fingerprintEnrolled) {
@@ -130,19 +131,19 @@ class _RegisterLearnerScreenState
     setState(() => _loading = true);
 
     try {
-      final response = await _api.registerLearner(
+      final response = await _api.registerLearnerWithConfirm(
         fullName: _nameController.text.trim(),
         phone: _phoneController.text.trim().isEmpty
             ? null
             : _phoneController.text.trim(),
         cohortId: widget.cohortId,
         nfcUid: _nfcUid,
+        confirmDuplicate: confirmDuplicate,
       );
 
       final learnerId = response.data['learner_id'].toString();
       final segId = response.data['seg_id']?.toString() ?? '';
 
-      // If fingerprint was enrolled, update backend
       if (_fingerprintEnrolled) {
         await _api.updateFingerprintStatus(learnerId);
       }
@@ -153,7 +154,73 @@ class _RegisterLearnerScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
+
+      // Check for duplicate name warning
+      String errorStr = e.toString();
+      try {
+        final response = (e as dynamic).response;
+        final data = response?.data;
+        if (data != null && data['duplicate_name'] == true) {
+          _confirmDuplicateAndRetry(
+            data['existing_seg_id']?.toString() ?? '',
+          );
+          return;
+        }
+      } catch (_) {}
+
       _showError('Registration failed. Try again.');
+    }
+  }
+
+  Future<void> _confirmDuplicateAndRetry(String existingSegId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_outlined,
+                color: Color(0xFFFF6B00)),
+            SizedBox(width: 8),
+            Text('Duplicate Name'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A learner named "${_nameController.text.trim()}" '
+              'already exists in this cohort as $existingSegId.',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Do you want to register a NEW learner with the same name?',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Register Anyway'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _register(confirmDuplicate: true);
     }
   }
 
@@ -378,7 +445,7 @@ class _RegisterLearnerScreenState
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _loading ? null : _register,
+                    onPressed: _loading ? null : () => _register(),
                     child: _loading
                         ? const SizedBox(
                             width: 24,

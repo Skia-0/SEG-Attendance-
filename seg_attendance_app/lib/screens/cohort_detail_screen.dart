@@ -21,6 +21,7 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
   Cohort? _cohort;
   List<dynamic> _sessions = [];
   bool _loading = true;
+  bool _sortDescending = true; // newest first by default
 
   @override
   void initState() {
@@ -38,6 +39,7 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
       setState(() {
         _cohort = Cohort.fromJson(cohortRes.data);
         _sessions = sessionsRes.data as List<dynamic>;
+        _applySort();
         _loading = false;
       });
     } catch (e) {
@@ -52,6 +54,25 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
         );
       }
     }
+  }
+
+  void _applySort() {
+    _sessions.sort((a, b) {
+      final aTime = a['started_at']?.toString() ?? '';
+      final bTime = b['started_at']?.toString() ?? '';
+      if (_sortDescending) {
+        return bTime.compareTo(aTime);
+      } else {
+        return aTime.compareTo(bTime);
+      }
+    });
+  }
+
+  void _toggleSort() {
+    setState(() {
+      _sortDescending = !_sortDescending;
+      _applySort();
+    });
   }
 
   void _openLearners() async {
@@ -91,7 +112,47 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     );
   }
 
-  void _startNewSession() async {
+  Future<void> _startNewSession() async {
+    // Check if exceeds expected sessions
+    if (_cohort?.expectedSessions != null &&
+        _cohort!.sessionCount >= _cohort!.expectedSessions!) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Color(0xFFFF6B00)),
+              SizedBox(width: 8),
+              Text('Session Limit Notice'),
+            ],
+          ),
+          content: Text(
+            'You already have ${_cohort!.sessionCount} sessions '
+            'in this cohort, which meets or exceeds the expected '
+            '${_cohort!.expectedSessions} sessions for the '
+            'cohort duration.\n\n'
+            'Do you still want to create another session?',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Proceed'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true) return;
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -268,7 +329,10 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('COHORT'),
+        title: Text(
+          _cohort?.name.toUpperCase() ?? 'COHORT',
+          overflow: TextOverflow.ellipsis,
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
@@ -345,40 +409,64 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     return Container(
       width: double.infinity,
       color: const Color(0xFF1A1A1A),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _cohort!.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _StatChip(
                 icon: Icons.person_outline,
                 label: '${_cohort!.learnerCount} Learners',
               ),
-              const SizedBox(width: 8),
               _StatChip(
                 icon: Icons.event_outlined,
                 label: '${_cohort!.sessionCount} Sessions',
               ),
-              const SizedBox(width: 8),
               _StatChip(
                 icon: Icons.check_circle_outline,
-                label:
-                    '${_cohort!.minAttendancePercent}% min',
+                label: '${_cohort!.minAttendancePercent}% min',
               ),
+              if (_cohort!.hasActiveSession)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B00),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'ACTIVE SESSION',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
           if (_cohort!.startDate != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               'Runs ${_cohort!.startDate} → ${_cohort!.endDate ?? "TBD"}',
               style: TextStyle(
@@ -460,15 +548,88 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
                   color: Color(0xFF1A1A1A),
                 ),
               ),
-              Text(
-                '${_sessions.length} total',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF888888),
-                ),
+              Row(
+                children: [
+                  Text(
+                    '${_sessions.length} total',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _toggleSort,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _sortDescending
+                                ? Icons.arrow_downward
+                                : Icons.arrow_upward,
+                            size: 12,
+                            color: const Color(0xFFFF6B00),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            _sortDescending ? 'Newest' : 'Oldest',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFFF6B00),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          if (_cohort?.expectedSessions != null &&
+              _cohort!.sessionCount > _cohort!.expectedSessions!) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Color(0xFFFF6B00),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Session count (${_cohort!.sessionCount}) '
+                      'exceeds cohort duration '
+                      '(~${_cohort!.expectedSessions} expected)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           if (_sessions.isEmpty)
             Container(
@@ -630,7 +791,7 @@ class _SessionTile extends StatelessWidget {
       statusColor = const Color(0xFFFF6B00);
     } else {
       status = 'ACTIVE';
-      statusColor = const Color(0xFF1A1A1A);
+      statusColor = Colors.blue.shade700;
     }
 
     return Padding(

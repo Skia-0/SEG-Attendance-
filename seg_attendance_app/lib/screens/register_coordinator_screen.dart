@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
 import 'create_hub_screen.dart';
 
 class RegisterCoordinatorScreen extends StatefulWidget {
@@ -21,6 +20,14 @@ class _RegisterCoordinatorScreenState
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
 
+  int _passwordStrength = 0; // 0-4
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(_updateStrength);
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -30,11 +37,42 @@ class _RegisterCoordinatorScreenState
     super.dispose();
   }
 
+  void _updateStrength() {
+    final pw = _passwordController.text;
+    int score = 0;
+    if (pw.length >= 8) score++;
+    if (pw.length >= 12) score++;
+    if (RegExp(r'[A-Z]').hasMatch(pw)) score++;
+    if (RegExp(r'\d').hasMatch(pw)) score++;
+    if (RegExp(r'[^A-Za-z0-9]').hasMatch(pw)) score++;
+    setState(() {
+      _passwordStrength = score.clamp(0, 4);
+    });
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter a password';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (value.length > 32) {
+      return 'Password must not exceed 32 characters';
+    }
+    if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
+      return 'Must contain at least one letter';
+    }
+    if (!RegExp(r'\d').hasMatch(value)) {
+      return 'Must contain at least one number';
+    }
+    return null;
+  }
+
   Future<void> _next() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _loading = true);
-
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (mounted) {
@@ -49,6 +87,37 @@ class _RegisterCoordinatorScreenState
           ),
         ),
       );
+    }
+  }
+
+  Color _strengthColor() {
+    switch (_passwordStrength) {
+      case 0:
+      case 1:
+        return Colors.red.shade600;
+      case 2:
+        return Colors.orange.shade600;
+      case 3:
+        return Colors.amber.shade700;
+      case 4:
+      default:
+        return Colors.green.shade700;
+    }
+  }
+
+  String _strengthLabel() {
+    switch (_passwordStrength) {
+      case 0:
+        return 'Too weak';
+      case 1:
+        return 'Weak';
+      case 2:
+        return 'Fair';
+      case 3:
+        return 'Good';
+      case 4:
+      default:
+        return 'Strong';
     }
   }
 
@@ -98,7 +167,6 @@ class _RegisterCoordinatorScreenState
                 ),
                 const SizedBox(height: 32),
 
-                // Full Name
                 TextFormField(
                   controller: _nameController,
                   textCapitalization: TextCapitalization.words,
@@ -119,7 +187,6 @@ class _RegisterCoordinatorScreenState
 
                 const SizedBox(height: 16),
 
-                // Phone
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
@@ -141,12 +208,13 @@ class _RegisterCoordinatorScreenState
 
                 const SizedBox(height: 16),
 
-                // Password
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  maxLength: 32,
                   decoration: InputDecoration(
                     labelText: 'Password',
+                    counterText: '',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -159,25 +227,58 @@ class _RegisterCoordinatorScreenState
                       ),
                     ),
                   ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Please enter a password';
-                    }
-                    if (v.trim().length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
+                  validator: _validatePassword,
                 ),
+
+                if (_passwordController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: _passwordStrength / 4,
+                            minHeight: 5,
+                            backgroundColor:
+                                const Color(0xFFEEEEEE),
+                            valueColor: AlwaysStoppedAnimation(
+                              _strengthColor(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _strengthLabel(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _strengthColor(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Must be 8-32 characters, with at least '
+                    'one letter and one number.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 16),
 
-                // Confirm Password
                 TextFormField(
                   controller: _confirmController,
                   obscureText: _obscureConfirm,
+                  maxLength: 32,
                   decoration: InputDecoration(
                     labelText: 'Confirm Password',
+                    counterText: '',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -203,7 +304,6 @@ class _RegisterCoordinatorScreenState
 
                 const SizedBox(height: 40),
 
-                // Next Button
                 SizedBox(
                   width: double.infinity,
                   height: 52,
