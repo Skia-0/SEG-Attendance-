@@ -5,6 +5,7 @@ import 'start_session_screen.dart';
 import 'summary_screen.dart';
 import 'learners_list_screen.dart';
 import 'session_detail_screen.dart';
+import 'at_risk_screen.dart';
 
 class CohortDetailScreen extends StatefulWidget {
   final String cohortId;
@@ -78,6 +79,18 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
     );
   }
 
+  void _viewAtRisk() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AtRiskScreen(
+          cohortId: widget.cohortId,
+          cohortName: _cohort!.name,
+        ),
+      ),
+    );
+  }
+
   void _startNewSession() async {
     await Navigator.push(
       context,
@@ -135,6 +148,61 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Failed to delete cohort'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmClearCards() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Clear NFC Cards?'),
+        content: Text(
+          'This will unlink all NFC cards from learners in '
+          '"${_cohort?.name ?? "this cohort"}". Cards can then '
+          'be reassigned to new learners in future cohorts.\n\n'
+          'Fingerprint and learner data will NOT be affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B00),
+            ),
+            child: const Text('Clear Cards'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final res = await _api.clearCohortCards(widget.cohortId);
+      final count = res.data['cleared_count'] ?? 0;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cleared $count NFC card(s)'),
+            backgroundColor: const Color(0xFFFF6B00),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to clear cards'),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
           ),
@@ -210,8 +278,19 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
               if (v == 'delete') _confirmDelete();
+              if (v == 'clear_cards') _confirmClearCards();
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'clear_cards',
+                child: Row(
+                  children: [
+                    Icon(Icons.nfc, color: Color(0xFFFF6B00)),
+                    SizedBox(width: 8),
+                    Text('Clear NFC Cards'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'delete',
                 child: Row(
@@ -335,6 +414,14 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
                   onTap: _viewSummary,
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ActionButton(
+                  icon: Icons.warning_amber_outlined,
+                  label: 'At-Risk',
+                  onTap: _viewAtRisk,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -420,8 +507,10 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
             )
           else
             ..._sessions
-                .map((s) => _SessionTile(session: s,
-                    cohortName: _cohort!.name,))
+                .map((s) => _SessionTile(
+                      session: s,
+                      cohortName: _cohort!.name,
+                    ))
                 .toList(),
         ],
       ),

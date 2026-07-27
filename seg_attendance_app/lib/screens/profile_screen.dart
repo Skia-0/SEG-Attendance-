@@ -5,6 +5,8 @@ import '../providers/auth_provider.dart';
 import '../models/coordinator.dart';
 import 'change_password_screen.dart';
 import 'about_screen.dart';
+import 'reports_history_screen.dart';
+import 'activity_log_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -139,18 +141,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ? const Center(child: Text('Could not load profile'))
               : ListView(
                   children: [
-                    // Header
                     Container(
                       width: double.infinity,
                       color: const Color(0xFF1A1A1A),
                       padding: const EdgeInsets.fromLTRB(
-                          20, 16, 20, 24),
+                        20,
+                        16,
+                        20,
+                        24,
+                      ),
                       child: Column(
                         children: [
                           CircleAvatar(
                             radius: 36,
-                            backgroundColor:
-                                const Color(0xFFFF6B00),
+                            backgroundColor: const Color(0xFFFF6B00),
                             child: Text(
                               _me!.fullName
                                   .substring(0, 1)
@@ -182,9 +186,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     _Section(
                       title: 'ACCOUNT',
                       children: [
@@ -220,7 +222,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-
                     _Section(
                       title: 'HUB',
                       children: [
@@ -236,7 +237,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-
+                    _Section(
+                      title: 'ACTIVITY',
+                      children: [
+                        _Tile(
+                          icon: Icons.description_outlined,
+                          label: 'Submitted Reports',
+                          value: '',
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Color(0xFF888888),
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const ReportsHistoryScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _Tile(
+                          icon: Icons.history,
+                          label: 'Activity Log',
+                          value: '',
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Color(0xFF888888),
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const ActivityLogScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                     _Section(
                       title: 'ABOUT',
                       children: [
@@ -260,12 +303,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 20),
-
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
+                        horizontal: 16,
+                      ),
                       child: OutlinedButton.icon(
                         onPressed: _logout,
                         icon: const Icon(Icons.logout),
@@ -273,13 +315,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red.shade700,
                           side: BorderSide(
-                              color: Colors.red.shade700),
+                            color: Colors.red.shade700,
+                          ),
                           minimumSize:
                               const Size(double.infinity, 50),
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 40),
                   ],
                 ),

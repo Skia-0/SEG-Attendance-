@@ -176,7 +176,7 @@ class AttendanceRecord(db.Model):
     # Unique constraint on (session_id, learner_id)
     __table_args__ = (
         db.UniqueConstraint("session_id", "learner_id", name="uq_session_learner"),
-        db.CheckConstraint("verification_method IN ('fingerprint', 'nfc')", name="check_verification_method"),
+        db.CheckConstraint("verification_method IN ('fingerprint', 'nfc', 'manual')", name="check_verification_method"),
     )
 
     # Relationships
@@ -298,3 +298,4 @@ class AuditLog(db.Model):
                 self.created_at.isoformat()
                 if self.created_at else None,
         }
+        

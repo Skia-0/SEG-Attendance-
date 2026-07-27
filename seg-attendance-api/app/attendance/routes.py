@@ -46,9 +46,9 @@ def checkin():
             "error": "session_id, learner_id, and verification_method are required"
         }), 400
 
-    if verification_method not in ["fingerprint", "nfc"]:
+    if verification_method not in ["fingerprint", "nfc", "manual"]:
         return jsonify({
-            "error": "verification_method must be either 'fingerprint' or 'nfc'"
+            "error": "verification_method must be 'fingerprint', 'nfc', or 'manual'"
         }), 400
 
     session, err = _get_owned_session_or_response(session_id, coordinator)
@@ -124,9 +124,9 @@ def checkout():
             "error": "session_id, learner_id, and verification_method are required"
         }), 400
 
-    if verification_method not in ["fingerprint", "nfc"]:
+    if verification_method not in ["fingerprint", "nfc", "manual"]:
         return jsonify({
-            "error": "verification_method must be either 'fingerprint' or 'nfc'"
+            "error": "verification_method must be 'fingerprint', 'nfc', or 'manual'"
         }), 400
 
     session, err = _get_owned_session_or_response(session_id, coordinator)

@@ -27,7 +27,6 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onError: (DioException error, handler) async {
-          // Handle 401 (expired token) with automatic refresh
           if (error.response?.statusCode == 401 &&
               !_isRefreshing &&
               error.requestOptions.path != '/auth/login' &&
@@ -42,24 +41,24 @@ class ApiService {
                 return handler.next(error);
               }
 
-              // Try to refresh
               final refreshDio = Dio(
                 BaseOptions(baseUrl: ApiConfig.baseUrl),
               );
               refreshDio.options.headers['Authorization'] =
                   'Bearer $refreshToken';
 
-              final refreshResponse = await refreshDio.post('/auth/refresh');
-              final newAccessToken = refreshResponse.data['access_token'];
+              final refreshResponse =
+                  await refreshDio.post('/auth/refresh');
+              final newAccessToken =
+                  refreshResponse.data['access_token'];
 
-              // Save new token
               await _storage.saveToken(newAccessToken);
               setToken(newAccessToken);
 
-              // Retry original request with new token
               error.requestOptions.headers['Authorization'] =
                   'Bearer $newAccessToken';
-              final retryResponse = await _dio.fetch(error.requestOptions);
+              final retryResponse =
+                  await _dio.fetch(error.requestOptions);
               _isRefreshing = false;
               return handler.resolve(retryResponse);
             } catch (_) {
@@ -162,6 +161,10 @@ class ApiService {
     return _dio.get('/cohorts/$cohortId/at-risk');
   }
 
+  Future<Response> deleteCohort(String cohortId) {
+    return _dio.delete('/cohorts/$cohortId');
+  }
+
   // ─── LEARNERS ────────────────────────────────────────
   Future<Response> registerLearner({
     required String fullName,
@@ -181,8 +184,25 @@ class ApiService {
     return _dio.get('/learners?cohort_id=$cohortId');
   }
 
+  Future<Response> getLearner(String learnerId) {
+    return _dio.get('/learners/$learnerId');
+  }
+
   Future<Response> getLearnerByNfc(String uid) {
     return _dio.get('/learners/nfc/$uid');
+  }
+
+  Future<Response> updateLearner({
+    required String learnerId,
+    String? fullName,
+    String? phone,
+    String? nfcUid,
+  }) {
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName;
+    if (phone != null) data['phone'] = phone;
+    if (nfcUid != null) data['nfc_uid'] = nfcUid;
+    return _dio.patch('/learners/$learnerId', data: data);
   }
 
   Future<Response> updateFingerprintStatus(String learnerId) {
@@ -190,6 +210,10 @@ class ApiService {
       '/learners/$learnerId/fingerprint',
       data: {'fingerprint_enrolled': true},
     );
+  }
+
+  Future<Response> deleteLearner(String learnerId) {
+    return _dio.delete('/learners/$learnerId');
   }
 
   // ─── NFC CARDS ───────────────────────────────────────
@@ -205,6 +229,10 @@ class ApiService {
     });
   }
 
+  Future<Response> clearCohortCards(String cohortId) {
+    return _dio.post('/nfc-cards/clear/$cohortId');
+  }
+
   // ─── SESSIONS ────────────────────────────────────────
   Future<Response> startSession({
     required String cohortId,
@@ -218,6 +246,10 @@ class ApiService {
 
   Future<Response> getSession(String sessionId) {
     return _dio.get('/sessions/$sessionId');
+  }
+
+  Future<Response> getSessionsByCohor(String cohortId) {
+    return _dio.get('/sessions?cohort_id=$cohortId');
   }
 
   Future<Response> openCheckin(String sessionId) {
@@ -250,10 +282,6 @@ class ApiService {
 
   Future<Response> endSession(String sessionId) {
     return _dio.patch('/sessions/$sessionId/end');
-  }
-
-  Future<Response> getSessionsByCohor(String cohortId) {
-    return _dio.get('/sessions?cohort_id=$cohortId');
   }
 
   // ─── ATTENDANCE ──────────────────────────────────────
@@ -306,33 +334,6 @@ class ApiService {
     });
   }
 
-  // ─── LEARNERS EXTRA ──────────────────────────────────
-  Future<Response> getLearner(String learnerId) {
-    return _dio.get('/learners/$learnerId');
-  }
-
-  Future<Response> updateLearner({
-    required String learnerId,
-    String? fullName,
-    String? phone,
-    String? nfcUid,
-  }) {
-    final data = <String, dynamic>{};
-    if (fullName != null) data['full_name'] = fullName;
-    if (phone != null) data['phone'] = phone;
-    if (nfcUid != null) data['nfc_uid'] = nfcUid;
-    return _dio.patch('/learners/$learnerId', data: data);
-  }
-
-  Future<Response> deleteLearner(String learnerId) {
-    return _dio.delete('/learners/$learnerId');
-  }
-
-  // ─── COHORT DELETE ───────────────────────────────────
-  Future<Response> deleteCohort(String cohortId) {
-    return _dio.delete('/cohorts/$cohortId');
-  }
-
   // ─── REPORTS ─────────────────────────────────────────
   Future<Response> submitSessionReport(String sessionId) {
     return _dio.post('/reports/session/$sessionId');
@@ -342,10 +343,20 @@ class ApiService {
     return _dio.post('/reports/cohort/$cohortId/final');
   }
 
-  Future<Response> listReports({String? hubId, String? type}) {
+  Future<Response> listReports({String? type}) {
     final params = <String, dynamic>{};
-    if (hubId != null) params['hub_id'] = hubId;
     if (type != null) params['type'] = type;
     return _dio.get('/reports', queryParameters: params);
+  }
+
+  Future<Response> getReport(String reportId) {
+    return _dio.get('/reports/$reportId');
+  }
+
+  Future<Response> getAuditLog({int limit = 100}) {
+    return _dio.get(
+      '/reports/audit-log',
+      queryParameters: {'limit': limit},
+    );
   }
 }

@@ -65,36 +65,55 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final prov = context.read<AttendanceProvider>();
     if (prov.session == null) return;
 
-    final learner = prov.records.firstWhere(
-      (r) => r.segId != null && _findByNfc(r, uid),
-      orElse: () => AttendanceRecord(
-        recordId: '',
-        sessionId: '',
-        learnerId: '',
-        verificationMethod: 'nfc',
-      ),
-    );
+    try {
+      final response = await ApiService().getLearnerByNfc(uid);
+      final learnerId = response.data['learner_id']?.toString();
 
-    if (learner.learnerId.isEmpty) {
-      _showSnack('Unknown card. Register this card first.',
-          isError: true);
-      await Future.delayed(const Duration(seconds: 1));
-      _startNfcListening();
-      return;
+      if (learnerId == null) {
+        _showSnack('Unknown NFC card', isError: true);
+        _restartNfcAfterDelay();
+        return;
+      }
+
+      final matched = prov.records.firstWhere(
+        (r) => r.learnerId == learnerId,
+        orElse: () => AttendanceRecord(
+          recordId: '',
+          sessionId: '',
+          learnerId: '',
+          verificationMethod: 'nfc',
+        ),
+      );
+
+      if (matched.learnerId.isEmpty) {
+        _showSnack(
+          'Card belongs to a learner not in this cohort',
+          isError: true,
+        );
+        _restartNfcAfterDelay();
+        return;
+      }
+
+      await _doCheckAction(matched, 'nfc');
+      _restartNfcAfterDelay();
+    } catch (e) {
+      if (e.toString().contains('404')) {
+        _showSnack('Unknown NFC card', isError: true);
+      } else {
+        _showSnack('Failed to read card', isError: true);
+      }
+      _restartNfcAfterDelay();
     }
+  }
 
-    await _doCheckAction(learner, 'nfc');
-
+  Future<void> _restartNfcAfterDelay() async {
     await Future.delayed(const Duration(milliseconds: 500));
+    final prov = context.read<AttendanceProvider>();
     if (mounted &&
         (prov.session?.checkinOpen == true ||
             prov.session?.checkoutOpen == true)) {
       _startNfcListening();
     }
-  }
-
-  bool _findByNfc(AttendanceRecord r, String uid) {
-    return false;
   }
 
   Future<void> _doCheckAction(
@@ -171,120 +190,120 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _endSession() async {
-   final confirm = await showDialog<bool>(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('End Session?'),
-      content: const Text(
-        'No more check-ins or check-outs will be '
-        'accepted after this.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('End Session?'),
+        content: const Text(
+          'No more check-ins or check-outs will be '
+          'accepted after this.',
         ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade700,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          child: const Text('End Session'),
-        ),
-      ],
-    ),
-  );
-
-  if (confirm != true) return;
-
-  _stopNfcListening();
-  final ok =
-      await context.read<AttendanceProvider>().endSession();
-  if (!ok || !mounted) return;
-
-  _showSnack('Session ended');
-
-  // Prompt to submit report
-  final submit = await showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF3E0),
-              shape: BoxShape.circle,
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
             ),
-            child: const Icon(
-              Icons.upload_file_outlined,
-              color: Color(0xFFFF6B00),
-              size: 40,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Submit Report Now?',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1A1A1A),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'You can submit this session\'s attendance report '
-            'to SEG central repository now, or later from '
-            'session details.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF666666),
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Later'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Submit'),
-                ),
-              ),
-            ],
+            child: const Text('End Session'),
           ),
         ],
       ),
-    ),
-  );
+    );
 
-  if (submit == true && mounted) {
-    try {
-      await ApiService()
-          .submitSessionReport(widget.sessionId);
-      if (mounted) _showSnack('Report submitted ✓');
-    } catch (_) {
-      if (mounted) {
-        _showSnack('Failed to submit report', isError: true);
+    if (confirm != true) return;
+
+    _stopNfcListening();
+    final ok =
+        await context.read<AttendanceProvider>().endSession();
+    if (!ok || !mounted) return;
+
+    _showSnack('Session ended');
+
+    final submit = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFF3E0),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.upload_file_outlined,
+                color: Color(0xFFFF6B00),
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Submit Report Now?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You can submit this session\'s attendance report '
+              'to SEG central repository now, or later from '
+              'session details.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF666666),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Later'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Submit'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (submit == true && mounted) {
+      try {
+        await ApiService()
+            .submitSessionReport(widget.sessionId);
+        if (mounted) _showSnack('Report submitted ✓');
+      } catch (_) {
+        if (mounted) {
+          _showSnack('Failed to submit report', isError: true);
+        }
       }
     }
+
+    if (mounted) Navigator.pop(context);
   }
 
-  if (mounted) Navigator.pop(context);
-}
   Future<void> _openFingerprintPicker() async {
     final prov = context.read<AttendanceProvider>();
     if (prov.session == null) return;
@@ -341,6 +360,132 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
 
     await _doCheckAction(selected, 'fingerprint');
+    _startNfcListening();
+  }
+
+  Future<void> _manualOverride() async {
+    final prov = context.read<AttendanceProvider>();
+    if (prov.session == null) return;
+
+    if (!prov.session!.checkinOpen &&
+        !prov.session!.checkoutOpen) {
+      _showSnack('Open check-in or check-out first',
+          isError: true);
+      return;
+    }
+
+    await _stopNfcListening();
+
+    final pending = prov.session!.checkinOpen
+        ? prov.records.where((r) => !r.hasCheckedIn).toList()
+        : prov.records
+            .where((r) => r.hasCheckedIn && !r.hasCheckedOut)
+            .toList();
+
+    if (pending.isEmpty) {
+      _showSnack('No pending learners');
+      _startNfcListening();
+      return;
+    }
+
+    final selected = await showModalBottomSheet<AttendanceRecord>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
+      ),
+      builder: (_) => _LearnerPickerSheet(learners: pending),
+    );
+
+    if (selected == null) {
+      _startNfcListening();
+      return;
+    }
+
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_outlined,
+                color: Color(0xFFFF6B00)),
+            SizedBox(width: 8),
+            Text('Manual Override'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Manually mark ${selected.fullName ?? "learner"} '
+              'as present without NFC or fingerprint verification.',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Reason (required)',
+                hintText: 'e.g. Card damaged, sensor failed',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16, color: Color(0xFFFF6B00)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'This action will be logged in the audit trail.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) return;
+              Navigator.pop(context, true);
+            },
+            child: const Text('Confirm Override'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      _startNfcListening();
+      return;
+    }
+
+    await _doCheckAction(selected, 'manual');
     _startNfcListening();
   }
 
@@ -457,6 +602,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           : Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                FloatingActionButton.small(
+                  heroTag: 'manual',
+                  onPressed: _manualOverride,
+                  backgroundColor: Colors.grey.shade700,
+                  foregroundColor: Colors.white,
+                  tooltip: 'Manual Override',
+                  child: const Icon(Icons.edit_note),
+                ),
+                const SizedBox(width: 10),
                 FloatingActionButton.extended(
                   heroTag: 'nfc',
                   onPressed: _showNfcInfo,
@@ -468,7 +622,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 FloatingActionButton.extended(
                   heroTag: 'fingerprint',
                   onPressed: _openFingerprintPicker,
@@ -807,6 +961,19 @@ class _LearnerRow extends StatelessWidget {
     }
   }
 
+  IconData _methodIcon(String method) {
+    switch (method) {
+      case 'fingerprint':
+        return Icons.fingerprint;
+      case 'nfc':
+        return Icons.nfc;
+      case 'manual':
+        return Icons.edit_note;
+      default:
+        return Icons.check;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String status;
@@ -905,7 +1072,7 @@ class _LearnerRow extends StatelessWidget {
                     label: 'IN',
                     time: checkInTime,
                     color: const Color(0xFFFF6B00),
-                    method: record.verificationMethod,
+                    methodIcon: _methodIcon(record.verificationMethod),
                     show: true,
                   ),
                   const SizedBox(width: 12),
@@ -913,7 +1080,7 @@ class _LearnerRow extends StatelessWidget {
                     label: 'OUT',
                     time: checkOutTime,
                     color: Colors.green.shade700,
-                    method: record.verificationMethod,
+                    methodIcon: _methodIcon(record.verificationMethod),
                     show: record.hasCheckedOut,
                   ),
                 ],
@@ -930,14 +1097,14 @@ class _TimeChip extends StatelessWidget {
   final String label;
   final String time;
   final Color color;
-  final String method;
+  final IconData methodIcon;
   final bool show;
 
   const _TimeChip({
     required this.label,
     required this.time,
     required this.color,
-    required this.method,
+    required this.methodIcon,
     required this.show,
   });
 
@@ -1001,9 +1168,7 @@ class _TimeChip extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         Icon(
-          method == 'fingerprint'
-              ? Icons.fingerprint
-              : Icons.nfc,
+          methodIcon,
           size: 10,
           color: Colors.grey.shade500,
         ),
@@ -1039,7 +1204,7 @@ class _LearnerPickerSheet extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  Icons.fingerprint,
+                  Icons.person_search,
                   color: Color(0xFFFF6B00),
                 ),
                 SizedBox(width: 8),
