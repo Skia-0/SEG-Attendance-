@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 from app.extensions import db
 from app.models import (
     Report,
@@ -7,7 +7,13 @@ from app.models import (
     Cohort,
     Learner,
     AttendanceRecord,
-    Coordinator,
+    AuditLog,
+)
+from app.utils import (
+    get_current_coordinator,
+    same_hub,
+    forbidden,
+    log_action,
 )
 
 reports_bp = Blueprint("reports", __name__)
@@ -114,7 +120,9 @@ def _build_cohort_final_data(cohort):
 @reports_bp.route("/session/<session_id>", methods=["POST"])
 @jwt_required()
 def submit_session_report(session_id):
-    coordinator_id = get_jwt_identity()
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
 
     try:
         session = Session.query.get(session_id)
@@ -124,16 +132,15 @@ def submit_session_report(session_id):
     if not session:
         return jsonify({"error": "Session not found"}), 404
 
+    cohort = Cohort.query.get(session.cohort_id)
+    if not cohort or not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to submit this session")
+
     if session.ended_at is None:
         return jsonify({
             "error": "Session must be ended before submitting"
         }), 400
 
-    cohort = Cohort.query.get(session.cohort_id)
-    if not cohort:
-        return jsonify({"error": "Cohort not found"}), 404
-
-    # Prevent duplicate report submission for same session
     existing = Report.query.filter_by(
         session_id=session.session_id,
         report_type="session"
@@ -150,7 +157,7 @@ def submit_session_report(session_id):
         cohort_id=cohort.cohort_id,
         hub_id=cohort.hub_id,
         session_id=session.session_id,
-        coordinator_id=coordinator_id,
+        coordinator_id=coordinator.coordinator_id,
         report_type="session",
         data=data,
         status="submitted",
@@ -158,13 +165,18 @@ def submit_session_report(session_id):
     db.session.add(report)
     db.session.commit()
 
+    log_action(coordinator, "report.session_submitted", "report",
+               report.report_id, {"session_id": str(session_id)})
+
     return jsonify(report.to_dict()), 201
 
 
 @reports_bp.route("/cohort/<cohort_id>/final", methods=["POST"])
 @jwt_required()
 def submit_cohort_final_report(cohort_id):
-    coordinator_id = get_jwt_identity()
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
 
     try:
         cohort = Cohort.query.get(cohort_id)
@@ -173,6 +185,9 @@ def submit_cohort_final_report(cohort_id):
 
     if not cohort:
         return jsonify({"error": "Cohort not found"}), 404
+
+    if not same_hub(coordinator, cohort.hub_id):
+        return forbidden("Not authorized to submit this cohort")
 
     existing = Report.query.filter_by(
         cohort_id=cohort.cohort_id,
@@ -190,7 +205,7 @@ def submit_cohort_final_report(cohort_id):
         cohort_id=cohort.cohort_id,
         hub_id=cohort.hub_id,
         session_id=None,
-        coordinator_id=coordinator_id,
+        coordinator_id=coordinator.coordinator_id,
         report_type="cohort_final",
         data=data,
         status="submitted",
@@ -198,19 +213,28 @@ def submit_cohort_final_report(cohort_id):
     db.session.add(report)
     db.session.commit()
 
+    log_action(coordinator, "report.cohort_final_submitted",
+               "report", report.report_id,
+               {"cohort_id": str(cohort_id)})
+
     return jsonify(report.to_dict()), 201
 
 
 @reports_bp.route("", methods=["GET"])
 @jwt_required()
 def list_reports():
-    """List all reports. Admin portal will use this."""
-    hub_id = request.args.get("hub_id")
+    """
+    List reports for the coordinator's hub only.
+    Coordinators can only see their own hub's reports.
+    """
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     report_type = request.args.get("type")
 
-    query = Report.query
-    if hub_id:
-        query = query.filter_by(hub_id=hub_id)
+    query = Report.query.filter_by(hub_id=coordinator.hub_id)
+
     if report_type:
         query = query.filter_by(report_type=report_type)
 
@@ -221,6 +245,10 @@ def list_reports():
 @reports_bp.route("/<report_id>", methods=["GET"])
 @jwt_required()
 def get_report(report_id):
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
     try:
         report = Report.query.get(report_id)
     except Exception:
@@ -229,4 +257,29 @@ def get_report(report_id):
     if not report:
         return jsonify({"error": "Report not found"}), 404
 
+    if not same_hub(coordinator, report.hub_id):
+        return forbidden("Not authorized to access this report")
+
     return jsonify(report.to_dict()), 200
+
+
+@reports_bp.route("/audit-log", methods=["GET"])
+@jwt_required()
+def get_audit_log():
+    """
+    Returns audit log entries for the coordinator's own actions.
+    Newest first, limited to last 100 entries.
+    """
+    coordinator = get_current_coordinator()
+    if not coordinator:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    limit = min(int(request.args.get("limit", 100)), 500)
+
+    logs = AuditLog.query.filter_by(
+        coordinator_id=coordinator.coordinator_id
+    ).order_by(
+        AuditLog.created_at.desc()
+    ).limit(limit).all()
+
+    return jsonify([log.to_dict() for log in logs]), 200
