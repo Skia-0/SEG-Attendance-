@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/attendance_record.dart';
 import '../models/session.dart';
+import 'attendance_screen.dart';
 
 class SessionDetailScreen extends StatefulWidget {
   final String sessionId;
@@ -71,6 +72,133 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
           '${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return '';
+    }
+  }
+
+  int get _pendingCount => _records
+      .where((r) => r.hasCheckedIn && !r.hasCheckedOut)
+      .length;
+
+  void _continueSession() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AttendanceScreen(
+          sessionId: widget.sessionId,
+          cohortName: widget.cohortName,
+        ),
+      ),
+    );
+    _load();
+  }
+
+  Future<void> _endSession() async {
+    String? reason;
+
+    if (_pendingCount > 0) {
+      final reasonController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_outlined,
+                  color: Colors.red),
+              SizedBox(width: 8),
+              Text('End Session Early?'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$_pendingCount learner(s) checked in but haven\'t '
+                'checked out yet. Provide a reason to end early.',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (required)',
+                  hintText: 'e.g. Time ran out',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (reasonController.text.trim().isEmpty) return;
+                Navigator.pop(context, true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              child: const Text('End Session'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+      reason = reasonController.text.trim();
+    } else {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('End Session?'),
+          content: const Text(
+            'No more check-ins or check-outs will be accepted.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              child: const Text('End Session'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    try {
+      await _api.endSession(widget.sessionId, reason: reason);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session ended'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to end session'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -265,12 +393,53 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                   const SizedBox(height: 6),
                   _InfoRow(
                     label: 'Attendance',
-                    value: '$completeCount / ${_records.length} complete',
+                    value:
+                        '$completeCount / ${_records.length} complete',
                   ),
                 ],
               ),
             ),
           ),
+          if (!s.isEnded)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _continueSession,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Continue Session'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6B00),
+                        minimumSize:
+                            const Size(double.infinity, 46),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _endSession,
+                      icon: const Icon(Icons.stop_circle_outlined),
+                      label: const Text('End Session'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(
+                            color: Colors.red.shade700),
+                        minimumSize:
+                            const Size(double.infinity, 46),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (s.isEnded && !_alreadySubmitted)
             Padding(
               padding: const EdgeInsets.symmetric(

@@ -45,12 +45,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _startNfcListening() async {
     if (_nfcListening) return;
-
     final available = await _nfc.isAvailable();
     if (!available) return;
-
     _nfcListening = true;
-
     await _nfc.startBackgroundScan((uid) async {
       await _handleNfcTap(uid);
     });
@@ -189,22 +186,41 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Future<void> _endSession() async {
-    final confirm = await showDialog<bool>(
+  Future<bool> _handleExit() async {
+    final prov = context.read<AttendanceProvider>();
+    final session = prov.session;
+
+    if (session == null || session.isEnded) return true;
+
+    final choice = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('End Session?'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_outlined,
+                color: Color(0xFFFF6B00)),
+            SizedBox(width: 8),
+            Text('Session Active'),
+          ],
+        ),
         content: const Text(
-          'No more check-ins or check-outs will be '
-          'accepted after this.',
+          'This session is still active. What do you want to do?',
+          style: TextStyle(fontSize: 13),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            child: const Text('Stay Here'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'leave'),
+            child: const Text('Leave Open'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, 'end'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red.shade700,
             ),
@@ -214,15 +230,149 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       ),
     );
 
-    if (confirm != true) return;
+    if (choice == 'cancel' || choice == null) return false;
+    if (choice == 'leave') return true;
+
+    // Chose to end
+    await _endSession();
+    return false; // _endSession handles navigation
+  }
+
+  Future<void> _endSession() async {
+    final prov = context.read<AttendanceProvider>();
+    if (prov.session == null) return;
+
+    final pendingCount = prov.pendingCheckoutCount;
+    String? reason;
+
+    if (pendingCount > 0) {
+      // Require reason
+      final reasonController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_outlined,
+                  color: Colors.red),
+              SizedBox(width: 8),
+              Text('End Session Early?'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$pendingCount learner(s) checked in but haven\'t '
+                'checked out yet. Provide a reason to end the '
+                'session early.',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (required)',
+                  hintText: 'e.g. Time ran out, learners left early',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: Colors.orange.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 16, color: Color(0xFFFF6B00)),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'This will be logged in the audit trail.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF666666),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (reasonController.text.trim().isEmpty) return;
+                Navigator.pop(context, true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              child: const Text('End Session'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+      reason = reasonController.text.trim();
+    } else {
+      // Simple confirmation
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('End Session?'),
+          content: const Text(
+            'No more check-ins or check-outs will be '
+            'accepted after this.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              child: const Text('End Session'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
 
     _stopNfcListening();
-    final ok =
-        await context.read<AttendanceProvider>().endSession();
-    if (!ok || !mounted) return;
+    final error = await context
+        .read<AttendanceProvider>()
+        .endSession(reason: reason);
+
+    if (!mounted) return;
+
+    if (error != null) {
+      _showSnack(error, isError: true);
+      return;
+    }
 
     _showSnack('Session ended');
 
+    // Prompt to submit report
     final submit = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -574,68 +724,81 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('SESSION'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () async {
-            await _stopNfcListening();
-            if (mounted) Navigator.pop(context);
-          },
-        ),
-      ),
-      body: Column(
-        children: [
-          _buildHeader(prov),
-          _buildControls(prov),
-          _buildStats(prov),
-          const Divider(height: 1),
-          Expanded(
-            child: _buildLearnerList(prov),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final canLeave = await _handleExit();
+        if (canLeave && mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('SESSION'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () async {
+              final canLeave = await _handleExit();
+              if (canLeave && mounted) {
+                await _stopNfcListening();
+                Navigator.pop(context);
+              }
+            },
           ),
-        ],
-      ),
-      floatingActionButton: session.isEnded
-          ? null
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'manual',
-                  onPressed: _manualOverride,
-                  backgroundColor: Colors.grey.shade700,
-                  foregroundColor: Colors.white,
-                  tooltip: 'Manual Override',
-                  child: const Icon(Icons.edit_note),
-                ),
-                const SizedBox(width: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'nfc',
-                  onPressed: _showNfcInfo,
-                  backgroundColor: const Color(0xFFFF6B00),
-                  foregroundColor: Colors.white,
-                  icon: const Icon(Icons.nfc),
-                  label: const Text(
-                    'NFC',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'fingerprint',
-                  onPressed: _openFingerprintPicker,
-                  backgroundColor: const Color(0xFF1A1A1A),
-                  foregroundColor: Colors.white,
-                  icon: const Icon(Icons.fingerprint),
-                  label: const Text(
-                    'Fingerprint',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
+        ),
+        body: Column(
+          children: [
+            _buildHeader(prov),
+            _buildControls(prov),
+            _buildStats(prov),
+            const Divider(height: 1),
+            Expanded(
+              child: _buildLearnerList(prov),
             ),
+          ],
+        ),
+        floatingActionButton: session.isEnded
+            ? null
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: 'manual',
+                    onPressed: _manualOverride,
+                    backgroundColor: Colors.grey.shade700,
+                    foregroundColor: Colors.white,
+                    tooltip: 'Manual Override',
+                    child: const Icon(Icons.edit_note),
+                  ),
+                  const SizedBox(width: 10),
+                  FloatingActionButton.extended(
+                    heroTag: 'nfc',
+                    onPressed: _showNfcInfo,
+                    backgroundColor: const Color(0xFFFF6B00),
+                    foregroundColor: Colors.white,
+                    icon: const Icon(Icons.nfc),
+                    label: const Text(
+                      'NFC',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FloatingActionButton.extended(
+                    heroTag: 'fingerprint',
+                    onPressed: _openFingerprintPicker,
+                    backgroundColor: const Color(0xFF1A1A1A),
+                    foregroundColor: Colors.white,
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text(
+                      'Fingerprint',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -840,7 +1003,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────
 class _ControlButton extends StatelessWidget {
   final String label;
   final IconData icon;

@@ -280,8 +280,12 @@ class ApiService {
     );
   }
 
-  Future<Response> endSession(String sessionId) {
-    return _dio.patch('/sessions/$sessionId/end');
+  Future<Response> endSession(String sessionId, {String? reason}) {
+    final data = <String, dynamic>{};
+    if (reason != null && reason.isNotEmpty) {
+      data['reason'] = reason;
+    }
+    return _dio.patch('/sessions/$sessionId/end', data: data);
   }
 
   // ─── ATTENDANCE ──────────────────────────────────────

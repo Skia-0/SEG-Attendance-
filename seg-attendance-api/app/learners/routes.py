@@ -30,11 +30,6 @@ def _get_owned_learner_or_response(learner_id, coordinator):
 
 
 def _generate_unique_seg_id(cohort, max_attempts=10):
-    """
-    Atomic SEG ID generation using DB unique constraint + retry.
-    Prevents race condition when two coordinators register 
-    learners simultaneously.
-    """
     prefix_base = cohort.name.replace(" ", "")
     prefix = prefix_base[:3].upper().ljust(3, "X")
 
@@ -48,7 +43,6 @@ def _generate_unique_seg_id(cohort, max_attempts=10):
         if not Learner.query.filter_by(seg_id=candidate).first():
             return candidate
 
-    # Fallback: use timestamp to guarantee uniqueness
     import time
     return f"SEG-{prefix}-{int(time.time()) % 100000:05d}"
 
@@ -65,6 +59,7 @@ def register_learner():
     phone = (data.get("phone") or "").strip() or None
     cohort_id = data.get("cohort_id")
     nfc_uid = (data.get("nfc_uid") or "").strip() or None
+    confirm_duplicate = data.get("confirm_duplicate", False)
 
     if not full_name or not cohort_id:
         return jsonify({
@@ -84,7 +79,20 @@ def register_learner():
             "Not authorized to register learners in this cohort"
         )
 
-    # Retry loop for atomic seg_id generation
+    # Warn on duplicate name (unless coordinator confirmed)
+    if not confirm_duplicate:
+        existing_name = Learner.query.filter_by(
+            cohort_id=cohort.cohort_id,
+            full_name=full_name
+        ).first()
+        if existing_name:
+            return jsonify({
+                "error": "A learner with this name already exists in this cohort",
+                "duplicate_name": True,
+                "existing_seg_id": existing_name.seg_id,
+                "requires_confirmation": True
+            }), 409
+
     for attempt in range(3):
         try:
             seg_id = _generate_unique_seg_id(cohort)
@@ -163,8 +171,6 @@ def get_learner_by_nfc(uid):
 
     cohort = Cohort.query.get(learner.cohort_id)
     if not cohort or not same_hub(coordinator, cohort.hub_id):
-        # Return 404 not 403 - prevents leaking that UID exists
-        # but belongs to another hub
         return jsonify({
             "error": "Learner with this NFC UID not found"
         }), 404

@@ -20,7 +20,6 @@ cohorts_bp = Blueprint("cohorts", __name__)
 
 
 def generate_cohort_code(name, hub_id):
-    """Generate short cohort code like POU-001."""
     prefix = "".join(c for c in name.upper() if c.isalpha())[:3]
     if len(prefix) < 3:
         prefix = prefix.ljust(3, "X")
@@ -43,6 +42,14 @@ def parse_date(value):
             return datetime.strptime(value, "%Y-%m-%d").date()
         except Exception:
             return None
+
+
+def _has_active_session(cohort_id):
+    """Check if cohort has any session with ended_at IS NULL."""
+    return Session.query.filter_by(
+        cohort_id=cohort_id,
+        ended_at=None
+    ).first() is not None
 
 
 @cohorts_bp.route("", methods=["POST"])
@@ -95,6 +102,8 @@ def create_cohort():
     result = cohort.to_dict()
     result["code"] = code
     result["learner_count"] = 0
+    result["session_count"] = 0
+    result["has_active_session"] = False
 
     return jsonify(result), 201
 
@@ -119,6 +128,7 @@ def list_my_cohorts():
         data["session_count"] = Session.query.filter_by(
             cohort_id=c.cohort_id
         ).count()
+        data["has_active_session"] = _has_active_session(c.cohort_id)
         results.append(data)
 
     return jsonify(results), 200
@@ -150,9 +160,18 @@ def get_cohort(cohort_id):
         cohort_id=cohort.cohort_id
     ).count()
 
+    # Calculate expected session count based on cohort duration (roughly)
+    expected_sessions = None
+    if cohort.start_date and cohort.end_date:
+        days = (cohort.end_date - cohort.start_date).days
+        # Assume ~1 session per week
+        expected_sessions = max(1, days // 7)
+
     cohort_data = cohort.to_dict()
     cohort_data["learner_count"] = learner_count
     cohort_data["session_count"] = session_count
+    cohort_data["expected_sessions"] = expected_sessions
+    cohort_data["has_active_session"] = _has_active_session(cohort.cohort_id)
 
     return jsonify(cohort_data), 200
 
@@ -218,11 +237,6 @@ def get_cohort_summary(cohort_id):
 @cohorts_bp.route("/<cohort_id>/at-risk", methods=["GET"])
 @jwt_required()
 def get_at_risk_learners(cohort_id):
-    """
-    Returns learners currently below the cohort's minimum
-    attendance threshold. Useful mid-cohort to identify
-    learners in danger of not qualifying for certification.
-    """
     coordinator = get_current_coordinator()
     if not coordinator:
         return jsonify({"error": "Coordinator not found"}), 404

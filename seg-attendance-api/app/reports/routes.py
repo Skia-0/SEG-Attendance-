@@ -20,7 +20,6 @@ reports_bp = Blueprint("reports", __name__)
 
 
 def _build_session_report_data(session, cohort):
-    """Compile full attendance data for a session."""
     learners = Learner.query.filter_by(
         cohort_id=session.cohort_id
     ).order_by(Learner.full_name).all()
@@ -68,7 +67,6 @@ def _build_session_report_data(session, cohort):
 
 
 def _build_cohort_final_data(cohort):
-    """Compile cohort-level certification data."""
     sessions = Session.query.filter_by(
         cohort_id=cohort.cohort_id
     ).all()
@@ -141,6 +139,23 @@ def submit_session_report(session_id):
             "error": "Session must be ended before submitting"
         }), 400
 
+    # Warn if 0 attendance and no confirmation
+    data = request.get_json() or {}
+    confirm_empty = data.get("confirm_empty", False)
+
+    attendance_count = AttendanceRecord.query.filter_by(
+        session_id=session.session_id,
+        is_complete=True
+    ).count()
+
+    if attendance_count == 0 and not confirm_empty:
+        return jsonify({
+            "error": "This session has no complete attendance records. "
+                     "Submitting an empty report.",
+            "empty_report": True,
+            "requires_confirmation": True
+        }), 400
+
     existing = Report.query.filter_by(
         session_id=session.session_id,
         report_type="session"
@@ -151,7 +166,7 @@ def submit_session_report(session_id):
             "report_id": str(existing.report_id)
         }), 409
 
-    data = _build_session_report_data(session, cohort)
+    report_data = _build_session_report_data(session, cohort)
 
     report = Report(
         cohort_id=cohort.cohort_id,
@@ -159,7 +174,7 @@ def submit_session_report(session_id):
         session_id=session.session_id,
         coordinator_id=coordinator.coordinator_id,
         report_type="session",
-        data=data,
+        data=report_data,
         status="submitted",
     )
     db.session.add(report)
@@ -223,10 +238,6 @@ def submit_cohort_final_report(cohort_id):
 @reports_bp.route("", methods=["GET"])
 @jwt_required()
 def list_reports():
-    """
-    List reports for the coordinator's hub only.
-    Coordinators can only see their own hub's reports.
-    """
     coordinator = get_current_coordinator()
     if not coordinator:
         return jsonify({"error": "Coordinator not found"}), 404
@@ -266,10 +277,6 @@ def get_report(report_id):
 @reports_bp.route("/audit-log", methods=["GET"])
 @jwt_required()
 def get_audit_log():
-    """
-    Returns audit log entries for the coordinator's own actions.
-    Newest first, limited to last 100 entries.
-    """
     coordinator = get_current_coordinator()
     if not coordinator:
         return jsonify({"error": "Coordinator not found"}), 404

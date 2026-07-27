@@ -22,6 +22,9 @@ class AttendanceProvider extends ChangeNotifier {
       _records.where((r) => r.isComplete).length;
   int get totalLearners => _records.length;
 
+  int get pendingCheckoutCount =>
+      _records.where((r) => r.hasCheckedIn && !r.hasCheckedOut).length;
+
   Future<void> loadSession(String sessionId) async {
     _loading = true;
     notifyListeners();
@@ -87,16 +90,19 @@ class AttendanceProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> endSession() async {
-    if (_session == null) return false;
+  Future<String?> endSession({String? reason}) async {
+    if (_session == null) return 'No session';
     try {
-      final res = await _api.endSession(_session!.sessionId);
+      final res = await _api.endSession(
+        _session!.sessionId,
+        reason: reason,
+      );
       _session = SessionModel.fromJson(res.data);
       stopPolling();
       notifyListeners();
-      return true;
-    } catch (_) {
-      return false;
+      return null;
+    } catch (e) {
+      return _parseError(e);
     }
   }
 
