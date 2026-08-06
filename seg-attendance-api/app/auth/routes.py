@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
@@ -10,10 +11,10 @@ from flask_jwt_extended import (
 from app.models import Coordinator, Hub
 from app.extensions import db, limiter
 from app.utils import log_action
+from app.services.email_service import EmailService
 
 auth_bp = Blueprint("auth", __name__)
 
-# Lockout configuration
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 30
 
@@ -30,11 +31,21 @@ def _validate_password(password):
     return None
 
 
-def _log_failed_login(phone, reason):
-    """
-    Log failed login attempt without user context (coordinator may not exist).
-    Uses direct DB insert to avoid circular deps.
-    """
+def _validate_email(email):
+    email = email.strip().lower()
+    if not email or "@" not in email:
+        return None, "Please enter a valid email address"
+
+    # Enforce domain restriction if configured
+    allowed_domain = os.environ.get("ALLOWED_EMAIL_DOMAIN")
+    if allowed_domain:
+        if not email.endswith(f"@{allowed_domain.lower()}"):
+            return None, f"Only @{allowed_domain} email addresses are allowed"
+
+    return email, None
+
+
+def _log_failed_login(email, reason):
     try:
         from app.models import AuditLog
         entry = AuditLog(
@@ -42,7 +53,7 @@ def _log_failed_login(phone, reason):
             hub_id=None,
             action="coordinator.login_failed",
             resource_type="coordinator",
-            resource_id=phone,
+            resource_id=email,
             details={"reason": reason},
         )
         db.session.add(entry)
@@ -57,25 +68,35 @@ def _log_failed_login(phone, reason):
 @auth_bp.route("/register", methods=["POST"])
 @limiter.limit("5 per hour")
 def register():
+    """
+    Step 1 of registration — creates unverified account, sends OTP.
+    Coordinator must then call /verify-email with OTP to activate.
+    """
     data = request.get_json() or {}
     full_name = (data.get("full_name") or "").strip()
-    phone = (data.get("phone") or "").strip()
+    email_raw = (data.get("email") or "").strip().lower()
     password = (data.get("password") or "").strip()
     hub_id = (data.get("hub_id") or "").strip()
 
-    if not full_name or not phone or not password or not hub_id:
+    if not full_name or not email_raw or not password or not hub_id:
         return jsonify({
-            "error": "Full name, phone, password and hub_id are required"
+            "error": "Full name, email, password and hub_id are required"
         }), 400
+
+    email, email_error = _validate_email(email_raw)
+    if email_error:
+        return jsonify({"error": email_error}), 400
 
     pw_error = _validate_password(password)
     if pw_error:
         return jsonify({"error": pw_error}), 400
 
-    existing = Coordinator.query.filter_by(phone=phone).first()
+    # Check email not already registered
+    existing = Coordinator.query.filter_by(email=email).first()
     if existing:
+        # Generic error — avoid enumeration
         return jsonify({
-            "error": "A coordinator with this phone number already exists"
+            "error": "Registration failed. Please contact your administrator if you need help."
         }), 409
 
     try:
@@ -88,95 +109,177 @@ def register():
 
     coordinator = Coordinator(
         full_name=full_name,
-        phone=phone,
-        hub_id=hub_id
+        email=email,
+        email_verified=False,
+        hub_id=hub_id,
+        role="coordinator"
     )
     coordinator.set_password(password)
 
     db.session.add(coordinator)
     db.session.commit()
 
-    log_action(coordinator, "coordinator.registered",
+    # Generate and send OTP
+    otp = EmailService.generate_otp(email, purpose="register")
+    sent = EmailService.send_registration_otp(email, full_name, otp)
+
+    log_action(coordinator, "coordinator.registered_pending_verification",
                "coordinator", coordinator.coordinator_id,
-               {"phone": phone, "hub_id": str(hub_id)})
+               {"email": email, "hub_id": str(hub_id)})
 
     return jsonify({
-        "message": "Account created successfully",
-        "coordinator_id": str(coordinator.coordinator_id),
-        "coordinator_name": coordinator.full_name,
-        "hub_id": str(coordinator.hub_id),
-        "hub_name": hub.name
+        "message": "Account created. Check your email for verification code.",
+        "email": email,
+        "requires_verification": True,
+        "email_sent": sent
     }), 201
+
+
+@auth_bp.route("/verify-email", methods=["POST"])
+@limiter.limit("10 per hour")
+def verify_email():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+
+    if not email or not code:
+        return jsonify({
+            "error": "Email and code are required"
+        }), 400
+
+    valid, error = EmailService.verify_otp(email, code, "register")
+    if not valid:
+        return jsonify({"error": error}), 400
+
+    coordinator = Coordinator.query.filter_by(email=email).first()
+    if not coordinator:
+        return jsonify({"error": "Account not found"}), 404
+
+    coordinator.email_verified = True
+    db.session.commit()
+
+    hub = Hub.query.get(coordinator.hub_id)
+
+    identity = str(coordinator.coordinator_id)
+    access_token = create_access_token(identity=identity)
+    refresh_token = create_refresh_token(identity=identity)
+
+    log_action(coordinator, "coordinator.email_verified",
+               "coordinator", coordinator.coordinator_id)
+
+    return jsonify({
+        "message": "Email verified successfully",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "coordinator_name": coordinator.full_name,
+        "coordinator_id": str(coordinator.coordinator_id),
+        "hub_id": str(coordinator.hub_id),
+        "hub_name": hub.name if hub else "",
+        "email": coordinator.email
+    }), 200
+
+
+@auth_bp.route("/resend-otp", methods=["POST"])
+@limiter.limit("3 per hour")
+def resend_otp():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    purpose = (data.get("purpose") or "register").strip()
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    if purpose not in ["register", "password_reset"]:
+        return jsonify({"error": "Invalid purpose"}), 400
+
+    coordinator = Coordinator.query.filter_by(email=email).first()
+    if not coordinator:
+        # Silent success to avoid enumeration
+        return jsonify({
+            "message": "If the email exists, a code has been sent."
+        }), 200
+
+    otp = EmailService.generate_otp(email, purpose=purpose)
+
+    if purpose == "register":
+        EmailService.send_registration_otp(
+            email, coordinator.full_name, otp
+        )
+    else:
+        EmailService.send_password_reset_otp(
+            email, coordinator.full_name, otp
+        )
+
+    return jsonify({"message": "Code sent"}), 200
 
 
 @auth_bp.route("/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def login():
     data = request.get_json() or {}
-    phone = (data.get("phone") or "").strip()
+    email = (data.get("email") or "").strip().lower()
     password = (data.get("password") or "").strip()
 
-    if not phone or not password:
+    if not email or not password:
         return jsonify({
-            "error": "Phone number and password are required"
+            "error": "Email and password are required"
         }), 400
 
-    coordinator = Coordinator.query.filter_by(phone=phone).first()
+    coordinator = Coordinator.query.filter_by(email=email).first()
 
-    # Non-existent account — return generic error but log for monitoring
     if not coordinator:
-        _log_failed_login(phone, "unknown_phone")
+        _log_failed_login(email, "unknown_email")
         return jsonify({"error": "Invalid credentials"}), 401
 
-    # Check if account is locked
     now = datetime.utcnow()
     if coordinator.locked_until and coordinator.locked_until > now:
         minutes_left = int(
             (coordinator.locked_until - now).total_seconds() // 60
         ) + 1
-        _log_failed_login(phone, "account_locked")
+        _log_failed_login(email, "account_locked")
         return jsonify({
-            "error": f"Account locked due to too many failed attempts. "
-                     f"Try again in {minutes_left} minute(s)."
-        }), 423  # 423 Locked
+            "error": f"Account locked. Try again in {minutes_left} minute(s)."
+        }), 423
 
-    # Check password
     if not coordinator.check_password(password):
         coordinator.failed_login_attempts = (
             (coordinator.failed_login_attempts or 0) + 1
         )
         coordinator.last_failed_login_at = now
 
-        # Lock account if too many failures
         if coordinator.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
             coordinator.locked_until = now + timedelta(
                 minutes=LOCKOUT_DURATION_MINUTES
             )
             db.session.commit()
 
-            _log_failed_login(phone,
-                              f"account_locked_after_{coordinator.failed_login_attempts}_attempts")
+            _log_failed_login(email,
+                              f"locked_after_{coordinator.failed_login_attempts}_attempts")
 
             log_action(coordinator, "coordinator.account_locked",
                        "coordinator", coordinator.coordinator_id,
-                       {"failed_attempts": coordinator.failed_login_attempts,
-                        "locked_for_minutes": LOCKOUT_DURATION_MINUTES})
+                       {"failed_attempts": coordinator.failed_login_attempts})
 
             return jsonify({
-                "error": f"Too many failed attempts. "
-                         f"Account locked for {LOCKOUT_DURATION_MINUTES} minutes."
+                "error": f"Too many failed attempts. Account locked for {LOCKOUT_DURATION_MINUTES} minutes."
             }), 423
 
         remaining = MAX_FAILED_ATTEMPTS - coordinator.failed_login_attempts
         db.session.commit()
-
-        _log_failed_login(phone, "wrong_password")
+        _log_failed_login(email, "wrong_password")
 
         return jsonify({
             "error": f"Invalid credentials. {remaining} attempt(s) remaining."
         }), 401
 
-    # Success — reset counters
+    if not coordinator.email_verified:
+        return jsonify({
+            "error": "Email not verified. Check your inbox for the verification code.",
+            "requires_verification": True,
+            "email": coordinator.email
+        }), 403
+
+    # Success
     coordinator.failed_login_attempts = 0
     coordinator.locked_until = None
     coordinator.last_failed_login_at = None
@@ -199,7 +302,76 @@ def login():
         "coordinator_name": coordinator.full_name,
         "coordinator_id": str(coordinator.coordinator_id),
         "hub_id": str(coordinator.hub_id),
-        "hub_name": hub_name
+        "hub_name": hub_name,
+        "email": coordinator.email
+    }), 200
+
+
+@auth_bp.route("/forgot-password", methods=["POST"])
+@limiter.limit("3 per hour")
+def forgot_password():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    coordinator = Coordinator.query.filter_by(email=email).first()
+
+    # Silent success to avoid enumeration
+    if not coordinator:
+        return jsonify({
+            "message": "If the email exists, a reset code has been sent."
+        }), 200
+
+    otp = EmailService.generate_otp(email, purpose="password_reset")
+    EmailService.send_password_reset_otp(
+        email, coordinator.full_name, otp
+    )
+
+    log_action(coordinator, "coordinator.password_reset_requested",
+               "coordinator", coordinator.coordinator_id)
+
+    return jsonify({
+        "message": "If the email exists, a reset code has been sent."
+    }), 200
+
+
+@auth_bp.route("/reset-password", methods=["POST"])
+@limiter.limit("5 per hour")
+def reset_password():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+    new_password = (data.get("new_password") or "").strip()
+
+    if not email or not code or not new_password:
+        return jsonify({
+            "error": "Email, code and new password are required"
+        }), 400
+
+    pw_error = _validate_password(new_password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
+
+    valid, error = EmailService.verify_otp(email, code, "password_reset")
+    if not valid:
+        return jsonify({"error": error}), 400
+
+    coordinator = Coordinator.query.filter_by(email=email).first()
+    if not coordinator:
+        return jsonify({"error": "Account not found"}), 404
+
+    coordinator.set_password(new_password)
+    coordinator.failed_login_attempts = 0
+    coordinator.locked_until = None
+    db.session.commit()
+
+    log_action(coordinator, "coordinator.password_reset_completed",
+               "coordinator", coordinator.coordinator_id)
+
+    return jsonify({
+        "message": "Password reset successfully. Please log in."
     }), 200
 
 
@@ -248,6 +420,10 @@ def update_me():
                 "error": "Name must be at least 3 characters"
             }), 400
         coordinator.full_name = name
+
+    if "phone" in data:
+        phone = (data.get("phone") or "").strip() or None
+        coordinator.phone = phone
 
     db.session.commit()
 

@@ -8,3 +8,4 @@ Werkzeug==3.0.3
 gunicorn==22.0.0
 python-dotenv==1.0.1
 flask-limiter==3.8.0
+sendgrid==6.11.0
