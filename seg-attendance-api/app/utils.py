@@ -69,3 +69,12 @@ def log_action(coordinator, action, resource_type, resource_id,
             db.session.rollback()
         except Exception:
             pass
+def validate_length(value, field_name, min_len=1, max_len=255):
+    """Returns error message if invalid, None if ok."""
+    if not value:
+        return f"{field_name} is required"
+    if len(value) < min_len:
+        return f"{field_name} must be at least {min_len} characters"
+    if len(value) > max_len:
+        return f"{field_name} must not exceed {max_len} characters"
+    return None          

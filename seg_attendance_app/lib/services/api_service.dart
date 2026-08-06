@@ -145,10 +145,7 @@ class ApiService {
     return _dio.get('/cohorts/$cohortId');
   }
 
-  Future<Response> getCohortByCode(String code) {
-    return _dio.get('/cohorts/code/$code');
-  }
-
+  
   Future<Response> getMyCohorts([String? hubId]) {
     return _dio.get('/cohorts');
   }
@@ -306,29 +303,38 @@ class ApiService {
 
   // ─── ATTENDANCE ──────────────────────────────────────
   Future<Response> checkIn({
-    required String sessionId,
-    required String learnerId,
-    required String verificationMethod,
-  }) {
-    return _dio.post('/attendance/checkin', data: {
-      'session_id': sessionId,
-      'learner_id': learnerId,
-      'verification_method': verificationMethod,
-    });
+  required String sessionId,
+  required String learnerId,
+  required String verificationMethod,
+  String? overrideReason,
+}) {
+  final data = <String, dynamic>{
+    'session_id': sessionId,
+    'learner_id': learnerId,
+    'verification_method': verificationMethod,
+  };
+  if (overrideReason != null && overrideReason.isNotEmpty) {
+    data['override_reason'] = overrideReason;
   }
+  return _dio.post('/attendance/checkin', data: data);
+}
 
   Future<Response> checkOut({
-    required String sessionId,
-    required String learnerId,
-    required String verificationMethod,
-  }) {
-    return _dio.post('/attendance/checkout', data: {
-      'session_id': sessionId,
-      'learner_id': learnerId,
-      'verification_method': verificationMethod,
-    });
+  required String sessionId,
+  required String learnerId,
+  required String verificationMethod,
+  String? overrideReason,
+}) {
+  final data = <String, dynamic>{
+    'session_id': sessionId,
+    'learner_id': learnerId,
+    'verification_method': verificationMethod,
+  };
+  if (overrideReason != null && overrideReason.isNotEmpty) {
+    data['override_reason'] = overrideReason;
   }
-
+  return _dio.post('/attendance/checkout', data: data);
+}
   Future<Response> getAttendance(String sessionId) {
     return _dio.get('/attendance/$sessionId');
   }

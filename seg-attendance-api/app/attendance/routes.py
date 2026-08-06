@@ -40,6 +40,7 @@ def checkin():
     session_id = data.get("session_id")
     learner_id = data.get("learner_id")
     verification_method = data.get("verification_method")
+    override_reason = (data.get("override_reason") or "").strip() or None
 
     if not session_id or not learner_id or not verification_method:
         return jsonify({
@@ -49,6 +50,11 @@ def checkin():
     if verification_method not in ["fingerprint", "nfc", "manual"]:
         return jsonify({
             "error": "verification_method must be 'fingerprint', 'nfc', or 'manual'"
+        }), 400
+
+    if verification_method == "manual" and not override_reason:
+        return jsonify({
+            "error": "A reason is required for manual override"
         }), 400
 
     session, err = _get_owned_session_or_response(session_id, coordinator)
@@ -90,19 +96,26 @@ def checkin():
             learner_id=learner.learner_id,
             checked_in_at=datetime.utcnow(),
             verification_method=verification_method,
+            override_reason=override_reason,
             is_complete=False
         )
         db.session.add(record)
     else:
         record.checked_in_at = datetime.utcnow()
         record.verification_method = verification_method
+        record.override_reason = override_reason
 
     db.session.commit()
 
+    log_details = {
+        "learner_id": str(learner.learner_id),
+        "method": verification_method,
+    }
+    if override_reason:
+        log_details["override_reason"] = override_reason
+
     log_action(coordinator, "attendance.checkin", "attendance",
-               record.record_id,
-               {"learner_id": str(learner.learner_id),
-                "method": verification_method})
+               record.record_id, log_details)
 
     return jsonify(record.to_dict()), 200
 
@@ -118,6 +131,7 @@ def checkout():
     session_id = data.get("session_id")
     learner_id = data.get("learner_id")
     verification_method = data.get("verification_method")
+    override_reason = (data.get("override_reason") or "").strip() or None
 
     if not session_id or not learner_id or not verification_method:
         return jsonify({
@@ -127,6 +141,11 @@ def checkout():
     if verification_method not in ["fingerprint", "nfc", "manual"]:
         return jsonify({
             "error": "verification_method must be 'fingerprint', 'nfc', or 'manual'"
+        }), 400
+
+    if verification_method == "manual" and not override_reason:
+        return jsonify({
+            "error": "A reason is required for manual override"
         }), 400
 
     session, err = _get_owned_session_or_response(session_id, coordinator)
@@ -169,14 +188,21 @@ def checkout():
 
     record.checked_out_at = datetime.utcnow()
     record.verification_method = verification_method
+    if override_reason:
+        record.override_reason = override_reason
     record.is_complete = True
 
     db.session.commit()
 
+    log_details = {
+        "learner_id": str(learner.learner_id),
+        "method": verification_method,
+    }
+    if override_reason:
+        log_details["override_reason"] = override_reason
+
     log_action(coordinator, "attendance.checkout", "attendance",
-               record.record_id,
-               {"learner_id": str(learner.learner_id),
-                "method": verification_method})
+               record.record_id, log_details)
 
     return jsonify(record.to_dict()), 200
 
@@ -217,6 +243,7 @@ def get_attendance_records(session_id):
                 "checked_out_at": record.checked_out_at.isoformat()
                     if record.checked_out_at else None,
                 "verification_method": record.verification_method,
+                "override_reason": record.override_reason,
                 "is_complete": record.is_complete,
                 "fingerprint_enrolled": learner.fingerprint_enrolled,
                 "nfc_uid": learner.nfc_uid,
@@ -231,6 +258,7 @@ def get_attendance_records(session_id):
                 "checked_in_at": None,
                 "checked_out_at": None,
                 "verification_method": "nfc",
+                "override_reason": None,
                 "is_complete": False,
                 "fingerprint_enrolled": learner.fingerprint_enrolled,
                 "nfc_uid": learner.nfc_uid,

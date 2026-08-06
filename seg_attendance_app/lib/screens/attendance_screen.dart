@@ -114,7 +114,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _doCheckAction(
-      AttendanceRecord learner, String method) async {
+      AttendanceRecord learner, String method,
+      {String? overrideReason}) async {
     final prov = context.read<AttendanceProvider>();
     if (prov.session == null) return;
 
@@ -125,12 +126,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       error = await prov.checkIn(
         learnerId: learner.learnerId,
         method: method,
+        overrideReason: overrideReason,
       );
       actionLabel = 'Checked in';
     } else if (prov.session!.checkoutOpen) {
       error = await prov.checkOut(
         learnerId: learner.learnerId,
         method: method,
+        overrideReason: overrideReason,
       );
       actionLabel = 'Checked out';
     } else {
@@ -233,9 +236,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (choice == 'cancel' || choice == null) return false;
     if (choice == 'leave') return true;
 
-    // Chose to end
     await _endSession();
-    return false; // _endSession handles navigation
+    return false;
   }
 
   Future<void> _endSession() async {
@@ -246,7 +248,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     String? reason;
 
     if (pendingCount > 0) {
-      // Require reason
       final reasonController = TextEditingController();
       final confirmed = await showDialog<bool>(
         context: context,
@@ -331,7 +332,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (confirmed != true) return;
       reason = reasonController.text.trim();
     } else {
-      // Simple confirmation
       final confirm = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
@@ -372,7 +372,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     _showSnack('Session ended');
 
-    // Prompt to submit report
     final submit = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -635,7 +634,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       return;
     }
 
-    await _doCheckAction(selected, 'manual');
+    await _doCheckAction(selected, 'manual',
+        overrideReason: reasonController.text.trim());
     _startNfcListening();
   }
 

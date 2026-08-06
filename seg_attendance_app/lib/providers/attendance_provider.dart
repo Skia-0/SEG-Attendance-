@@ -109,6 +109,7 @@ class AttendanceProvider extends ChangeNotifier {
   Future<String?> checkIn({
     required String learnerId,
     required String method,
+    String? overrideReason,
   }) async {
     if (_session == null) return 'No session';
     try {
@@ -116,6 +117,7 @@ class AttendanceProvider extends ChangeNotifier {
         sessionId: _session!.sessionId,
         learnerId: learnerId,
         verificationMethod: method,
+        overrideReason: overrideReason,
       );
       await loadAttendance();
       return null;
@@ -127,6 +129,7 @@ class AttendanceProvider extends ChangeNotifier {
   Future<String?> checkOut({
     required String learnerId,
     required String method,
+    String? overrideReason,
   }) async {
     if (_session == null) return 'No session';
     try {
@@ -134,6 +137,7 @@ class AttendanceProvider extends ChangeNotifier {
         sessionId: _session!.sessionId,
         learnerId: learnerId,
         verificationMethod: method,
+        overrideReason: overrideReason,
       );
       await loadAttendance();
       return null;

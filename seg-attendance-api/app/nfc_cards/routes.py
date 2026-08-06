@@ -62,9 +62,16 @@ def assign_card():
     try:
         existing_card = NFCCard.query.filter_by(uid=uid).first()
 
-        # If this card was assigned to another learner in same hub,
-        # clear that learner's nfc_uid
+        # If this card was previously assigned, verify it belonged to
+        # this coordinator's hub before clearing it.
         if existing_card and existing_card.learner_id:
+            if existing_card.hub_id and not same_hub(
+                coordinator, existing_card.hub_id
+            ):
+                return jsonify({
+                    "error": "This card is assigned to a learner in another hub"
+                }), 409
+
             old_learner = Learner.query.get(existing_card.learner_id)
             if old_learner:
                 old_learner.nfc_uid = None
@@ -86,6 +93,7 @@ def assign_card():
 
         card.learner_id = learner.learner_id
         card.cohort_id = cohort_id
+        card.hub_id = coordinator.hub_id
         card.is_active = True
         card.assigned_at = datetime.utcnow()
 
