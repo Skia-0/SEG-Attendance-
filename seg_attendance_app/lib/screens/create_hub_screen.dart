@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'verify_otp_screen.dart';
 
 class CreateHubScreen extends StatefulWidget {
   final String coordinatorName;
-  final String coordinatorPhone;
+  final String coordinatorEmail;
   final String coordinatorPassword;
 
   const CreateHubScreen({
     super.key,
     required this.coordinatorName,
-    required this.coordinatorPhone,
+    required this.coordinatorEmail,
     required this.coordinatorPassword,
   });
 
@@ -36,7 +37,6 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
     setState(() => _loading = true);
 
     try {
-      // Step 1 — Create hub
       final hubResponse = await _api.createHub(
         name: _hubNameController.text.trim(),
         location: _locationController.text.trim(),
@@ -44,93 +44,45 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
 
       final hubId = hubResponse.data['hub_id'].toString();
 
-      // Step 2 — Register coordinator with hub
       await _api.registerCoordinator(
         fullName: widget.coordinatorName,
-        phone: widget.coordinatorPhone,
+        email: widget.coordinatorEmail,
         password: widget.coordinatorPassword,
         hubId: hubId,
       );
 
       if (mounted) {
         setState(() => _loading = false);
-        _showSuccess();
+        // Go directly to OTP verification
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VerifyOtpScreen(
+              email: widget.coordinatorEmail,
+              purpose: 'register',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
+        String msg = 'Registration failed. Please try again.';
+        try {
+          final resp = (e as dynamic).response;
+          final err = resp?.data?['error'];
+          if (err != null) msg = err.toString();
+        } catch (_) {}
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Registration failed. Please try again.',
-            ),
+            content: Text(msg),
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
-  }
-
-  void _showSuccess() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(50),
-              ),
-              child: const Icon(
-                Icons.check_circle_outline,
-                color: Color(0xFFFF6B00),
-                size: 48,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Account Created!',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Welcome ${widget.coordinatorName}. '
-              'Please sign in with your credentials.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF666666),
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).popUntil(
-                    (route) => route.isFirst,
-                  );
-                },
-                child: const Text('Go To Login'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -179,7 +131,6 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Hub Name
                 TextFormField(
                   controller: _hubNameController,
                   textCapitalization: TextCapitalization.words,
@@ -198,7 +149,6 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
 
                 const SizedBox(height: 16),
 
-                // Location
                 TextFormField(
                   controller: _locationController,
                   textCapitalization: TextCapitalization.words,
@@ -217,7 +167,6 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
 
                 const SizedBox(height: 16),
 
-                // Summary Card
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -248,7 +197,7 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Phone: ${widget.coordinatorPhone}',
+                        'Email: ${widget.coordinatorEmail}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF1A1A1A),
@@ -258,9 +207,38 @@ class _CreateHubScreenState extends State<CreateHubScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 16),
+
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.blue,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You will receive a verification code by email after creating your account.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF444444),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
                 const SizedBox(height: 40),
 
-                // Register Button
                 SizedBox(
                   width: double.infinity,
                   height: 52,

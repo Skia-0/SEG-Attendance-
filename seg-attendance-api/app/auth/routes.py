@@ -178,6 +178,62 @@ def verify_email():
         "email": coordinator.email
     }), 200
 
+@auth_bp.route("/verify-otp", methods=["POST"])
+@limiter.limit("10 per hour")
+def verify_otp_only():
+    """
+    Verify OTP without marking it as used.
+    Used for password reset flow — client checks OTP validity 
+    before showing reset password screen.
+    """
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+    purpose = (data.get("purpose") or "password_reset").strip()
+
+    if not email or not code:
+        return jsonify({
+            "error": "Email and code are required"
+        }), 400
+
+    # Peek — don't consume the OTP yet
+    from app.models import EmailVerification
+    from datetime import datetime
+
+    verification = EmailVerification.query.filter_by(
+        email=email,
+        purpose=purpose,
+        used_at=None
+    ).order_by(
+        EmailVerification.created_at.desc()
+    ).first()
+
+    if not verification:
+        return jsonify({
+            "error": "No pending verification for this email"
+        }), 400
+
+    if verification.expires_at < datetime.utcnow():
+        return jsonify({
+            "error": "Verification code has expired"
+        }), 400
+
+    if verification.attempts >= EmailService.MAX_OTP_ATTEMPTS:
+        return jsonify({
+            "error": "Too many attempts. Request a new code."
+        }), 400
+
+    if verification.otp_code != code:
+        verification.attempts += 1
+        db.session.commit()
+        remaining = EmailService.MAX_OTP_ATTEMPTS - verification.attempts
+        return jsonify({
+            "error": f"Invalid code. {remaining} attempts remaining."
+        }), 400
+
+    # Valid — but don't mark as used (reset endpoint will do that)
+    return jsonify({"message": "Code is valid"}), 200
+
 
 @auth_bp.route("/resend-otp", methods=["POST"])
 @limiter.limit("3 per hour")

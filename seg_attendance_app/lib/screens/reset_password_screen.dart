@@ -1,44 +1,47 @@
 import 'package:flutter/material.dart';
-import 'create_hub_screen.dart';
+import '../services/api_service.dart';
 
-class RegisterCoordinatorScreen extends StatefulWidget {
-  const RegisterCoordinatorScreen({super.key});
+class ResetPasswordScreen extends StatefulWidget {
+  final String email;
+  final String code;
+
+  const ResetPasswordScreen({
+    super.key,
+    required this.email,
+    required this.code,
+  });
 
   @override
-  State<RegisterCoordinatorScreen> createState() =>
-      _RegisterCoordinatorScreenState();
+  State<ResetPasswordScreen> createState() =>
+      _ResetPasswordScreenState();
 }
 
-class _RegisterCoordinatorScreenState
-    extends State<RegisterCoordinatorScreen> {
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _newController = TextEditingController();
   final _confirmController = TextEditingController();
-  bool _loading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
+  final _api = ApiService();
 
+  bool _loading = false;
+  bool _hideNew = true;
+  bool _hideConfirm = true;
   int _passwordStrength = 0;
 
   @override
   void initState() {
     super.initState();
-    _passwordController.addListener(_updateStrength);
+    _newController.addListener(_updateStrength);
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
+    _newController.dispose();
     _confirmController.dispose();
     super.dispose();
   }
 
   void _updateStrength() {
-    final pw = _passwordController.text;
+    final pw = _newController.text;
     int score = 0;
     if (pw.length >= 8) score++;
     if (pw.length >= 12) score++;
@@ -52,13 +55,13 @@ class _RegisterCoordinatorScreenState
 
   String? _validatePassword(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Please enter a password';
+      return 'Please enter a new password';
     }
     if (value.length < 8) {
-      return 'Password must be at least 8 characters';
+      return 'Must be at least 8 characters';
     }
     if (value.length > 32) {
-      return 'Password must not exceed 32 characters';
+      return 'Must not exceed 32 characters';
     }
     if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
       return 'Must contain at least one letter';
@@ -67,27 +70,6 @@ class _RegisterCoordinatorScreenState
       return 'Must contain at least one number';
     }
     return null;
-  }
-
-  Future<void> _next() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (mounted) {
-      setState(() => _loading = false);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CreateHubScreen(
-            coordinatorName: _nameController.text.trim(),
-            coordinatorEmail: _emailController.text.trim().toLowerCase(),
-            coordinatorPassword: _passwordController.text.trim(),
-          ),
-        ),
-      );
-    }
   }
 
   Color _strengthColor() {
@@ -121,12 +103,58 @@ class _RegisterCoordinatorScreenState
     }
   }
 
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _loading = true);
+
+    try {
+      await _api.resetPassword(
+        email: widget.email,
+        code: widget.code,
+        newPassword: _newController.text.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() => _loading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password reset successful. Please log in.'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Go back to login
+      Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+
+      String msg = 'Failed to reset password';
+      try {
+        final resp = (e as dynamic).response;
+        final err = resp?.data?['error'];
+        if (err != null) msg = err.toString();
+      } catch (_) {}
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Create Account'),
+        title: const Text('NEW PASSWORD'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
@@ -141,16 +169,7 @@ class _RegisterCoordinatorScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Step 1 of 2',
-                  style: TextStyle(
-                    color: Color(0xFFFF6B00),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Coordinator Details',
+                  'Set New Password',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -158,9 +177,9 @@ class _RegisterCoordinatorScreenState
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Enter your work email and personal info',
-                  style: TextStyle(
+                Text(
+                  'Create a new password for ${widget.email}',
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF888888),
                   ),
@@ -168,71 +187,25 @@ class _RegisterCoordinatorScreenState
                 const SizedBox(height: 32),
 
                 TextFormField(
-                  controller: _nameController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Please enter your full name';
-                    }
-                    if (v.trim().length < 3) {
-                      return 'Name must be at least 3 characters';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  textCapitalization: TextCapitalization.none,
-                  decoration: const InputDecoration(
-                    labelText: 'Work Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    hintText: 'name@seghana.net',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!v.contains('@') || !v.contains('.')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
+                  controller: _newController,
+                  obscureText: _hideNew,
                   maxLength: 32,
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'New Password',
                     counterText: '',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                      ),
-                      onPressed: () => setState(
-                        () => _obscurePassword = !_obscurePassword,
-                      ),
+                      icon: Icon(_hideNew
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined),
+                      onPressed: () =>
+                          setState(() => _hideNew = !_hideNew),
                     ),
                   ),
                   validator: _validatePassword,
                 ),
 
-                if (_passwordController.text.isNotEmpty) ...[
+                if (_newController.text.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -276,28 +249,25 @@ class _RegisterCoordinatorScreenState
 
                 TextFormField(
                   controller: _confirmController,
-                  obscureText: _obscureConfirm,
+                  obscureText: _hideConfirm,
                   maxLength: 32,
                   decoration: InputDecoration(
-                    labelText: 'Confirm Password',
+                    labelText: 'Confirm New Password',
                     counterText: '',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureConfirm
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                      ),
+                      icon: Icon(_hideConfirm
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined),
                       onPressed: () => setState(
-                        () => _obscureConfirm = !_obscureConfirm,
-                      ),
+                          () => _hideConfirm = !_hideConfirm),
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Please confirm your password';
+                    if (v == null || v.isEmpty) {
+                      return 'Confirm new password';
                     }
-                    if (v.trim() != _passwordController.text.trim()) {
+                    if (v != _newController.text) {
                       return 'Passwords do not match';
                     }
                     return null;
@@ -310,7 +280,7 @@ class _RegisterCoordinatorScreenState
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _loading ? null : _next,
+                    onPressed: _loading ? null : _submit,
                     child: _loading
                         ? const SizedBox(
                             width: 24,
@@ -320,7 +290,7 @@ class _RegisterCoordinatorScreenState
                               strokeWidth: 2.5,
                             ),
                           )
-                        : const Text('Next — Create Hub'),
+                        : const Text('Reset Password'),
                   ),
                 ),
               ],

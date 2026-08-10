@@ -10,7 +10,7 @@ from app.models import EmailVerification
 class EmailService:
     """Handles email sending and OTP verification."""
 
-    OTP_EXPIRY_MINUTES = 10
+    OTP_EXPIRY_MINUTES = 5
     MAX_OTP_ATTEMPTS = 5
 
     @staticmethod
@@ -115,7 +115,7 @@ class EmailService:
               <span style="font-size:32px;font-weight:bold;color:#FF6B00;letter-spacing:8px;">{otp_code}</span>
             </div>
             <p style="color:#666;font-size:12px;">
-              This code expires in {cls.OTP_EXPIRY_MINUTES} minutes.
+              This code expires soon.
               If you didn't request this, please ignore this email.
             </p>
           </div>
@@ -143,7 +143,7 @@ class EmailService:
               <span style="font-size:32px;font-weight:bold;color:#FF6B00;letter-spacing:8px;">{otp_code}</span>
             </div>
             <p style="color:#666;font-size:12px;">
-              This code expires in {cls.OTP_EXPIRY_MINUTES} minutes.
+              This code expires soon.
               If you didn't request a password reset, please contact your administrator immediately.
             </p>
           </div>

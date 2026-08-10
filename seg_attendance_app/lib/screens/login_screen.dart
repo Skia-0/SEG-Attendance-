@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'register_coordinator_screen.dart';
+import 'verify_otp_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,14 +14,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -29,22 +31,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
 
-    final error = await context.read<AuthProvider>().login(
-          _phoneController.text.trim(),
+    final result = await context.read<AuthProvider>().login(
+          _emailController.text.trim(),
           _passwordController.text.trim(),
         );
 
-    if (mounted) setState(() => _loading = false);
+    if (!mounted) return;
+    setState(() => _loading = false);
 
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
+    if (result == null) return; // success — AuthGate will navigate
+
+    // Special case — unverified email
+    if (result.startsWith('UNVERIFIED:')) {
+      final email = result.substring('UNVERIFIED:'.length);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerifyOtpScreen(
+            email: email,
+            purpose: 'register',
+          ),
         ),
       );
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -60,19 +78,13 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 60),
-
-                // SEG Logo
-               Image.asset(
-                 'assets/images/seg_logo.png',
+                Image.asset(
+                  'assets/images/seg_app.png',
                   width: 200,
                   height: 100,
                   fit: BoxFit.contain,
                 ),
-                
-
                 const SizedBox(height: 24),
-
-                // Title
                 const Text(
                   'SEG Attendance',
                   style: TextStyle(
@@ -82,9 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     letterSpacing: 0.5,
                   ),
                 ),
-
                 const SizedBox(height: 6),
-
                 const Text(
                   'Sign in to continue',
                   style: TextStyle(
@@ -92,28 +102,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Color(0xFF888888),
                   ),
                 ),
-
                 const SizedBox(height: 48),
-
-                // Phone Field
                 TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  textCapitalization: TextCapitalization.none,
                   decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    prefixIcon: Icon(Icons.phone_outlined),
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                    hintText: 'name@seghana.net',
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
-                      return 'Please enter your phone number';
+                      return 'Please enter your email';
+                    }
+                    if (!v.contains('@')) {
+                      return 'Please enter a valid email';
                     }
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 16),
-
-                // Password Field
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -140,10 +150,29 @@ class _LoginScreenState extends State<LoginScreen> {
                     return null;
                   },
                 ),
-
-                const SizedBox(height: 32),
-
-                // Login Button
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ForgotPasswordScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Forgot password?',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B00),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -161,10 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Sign In'),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // Register Link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -196,7 +222,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 40),
               ],
             ),

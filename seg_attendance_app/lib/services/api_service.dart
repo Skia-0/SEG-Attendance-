@@ -88,24 +88,74 @@ class ApiService {
   }
 
   // ─── AUTH ───────────────────────────────────────────
-  Future<Response> login(String phone, String password) {
+  Future<Response> login(String email, String password) {
     return _dio.post('/auth/login', data: {
-      'phone': phone,
+      'email': email,
       'password': password,
     });
   }
 
   Future<Response> registerCoordinator({
     required String fullName,
-    required String phone,
+    required String email,
     required String password,
     required String hubId,
   }) {
     return _dio.post('/auth/register', data: {
       'full_name': fullName,
-      'phone': phone,
+      'email': email,
       'password': password,
       'hub_id': hubId,
+    });
+  }
+
+  Future<Response> verifyEmail({
+    required String email,
+    required String code,
+  }) {
+    return _dio.post('/auth/verify-email', data: {
+      'email': email,
+      'code': code,
+    });
+  }
+
+  Future<Response> verifyOtp({
+  required String email,
+  required String code,
+  required String purpose,
+}) {
+  return _dio.post('/auth/verify-otp', data: {
+    'email': email,
+    'code': code,
+    'purpose': purpose,
+  });
+}
+
+  Future<Response> resendOtp({
+    required String email,
+    required String purpose,
+  }) {
+    return _dio.post('/auth/resend-otp', data: {
+      'email': email,
+      'purpose': purpose,
+    });
+  }
+
+  Future<Response> forgotPassword({required String email}) {
+    return _dio.post('/auth/forgot-password', data: {
+      'email': email,
+    });
+  }
+
+  Future<Response> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) {
+    return _dio.post('/auth/reset-password', data: {
+      'email': email,
+      'code': code,
+      'new_password': newPassword,
     });
   }
 
@@ -145,7 +195,6 @@ class ApiService {
     return _dio.get('/cohorts/$cohortId');
   }
 
-  
   Future<Response> getMyCohorts([String? hubId]) {
     return _dio.get('/cohorts');
   }
@@ -164,34 +213,34 @@ class ApiService {
 
   // ─── LEARNERS ────────────────────────────────────────
   Future<Response> registerLearner({
-  required String fullName,
-  String? phone,
-  required String cohortId,
-  String? nfcUid,
-}) {
-  return _dio.post('/learners', data: {
-    'full_name': fullName,
-    'phone': phone,
-    'cohort_id': cohortId,
-    'nfc_uid': nfcUid,
-  });
-}
+    required String fullName,
+    String? phone,
+    required String cohortId,
+    String? nfcUid,
+  }) {
+    return _dio.post('/learners', data: {
+      'full_name': fullName,
+      'phone': phone,
+      'cohort_id': cohortId,
+      'nfc_uid': nfcUid,
+    });
+  }
 
   Future<Response> registerLearnerWithConfirm({
-  required String fullName,
-  String? phone,
-  required String cohortId,
-  String? nfcUid,
-  bool confirmDuplicate = false,
-}) {
-  return _dio.post('/learners', data: {
-    'full_name': fullName,
-    'phone': phone,
-    'cohort_id': cohortId,
-    'nfc_uid': nfcUid,
-    'confirm_duplicate': confirmDuplicate,
-  });
-}
+    required String fullName,
+    String? phone,
+    required String cohortId,
+    String? nfcUid,
+    bool confirmDuplicate = false,
+  }) {
+    return _dio.post('/learners', data: {
+      'full_name': fullName,
+      'phone': phone,
+      'cohort_id': cohortId,
+      'nfc_uid': nfcUid,
+      'confirm_duplicate': confirmDuplicate,
+    });
+  }
 
   Future<Response> getLearnersBycohort(String cohortId) {
     return _dio.get('/learners?cohort_id=$cohortId');
@@ -303,38 +352,39 @@ class ApiService {
 
   // ─── ATTENDANCE ──────────────────────────────────────
   Future<Response> checkIn({
-  required String sessionId,
-  required String learnerId,
-  required String verificationMethod,
-  String? overrideReason,
-}) {
-  final data = <String, dynamic>{
-    'session_id': sessionId,
-    'learner_id': learnerId,
-    'verification_method': verificationMethod,
-  };
-  if (overrideReason != null && overrideReason.isNotEmpty) {
-    data['override_reason'] = overrideReason;
+    required String sessionId,
+    required String learnerId,
+    required String verificationMethod,
+    String? overrideReason,
+  }) {
+    final data = <String, dynamic>{
+      'session_id': sessionId,
+      'learner_id': learnerId,
+      'verification_method': verificationMethod,
+    };
+    if (overrideReason != null && overrideReason.isNotEmpty) {
+      data['override_reason'] = overrideReason;
+    }
+    return _dio.post('/attendance/checkin', data: data);
   }
-  return _dio.post('/attendance/checkin', data: data);
-}
 
   Future<Response> checkOut({
-  required String sessionId,
-  required String learnerId,
-  required String verificationMethod,
-  String? overrideReason,
-}) {
-  final data = <String, dynamic>{
-    'session_id': sessionId,
-    'learner_id': learnerId,
-    'verification_method': verificationMethod,
-  };
-  if (overrideReason != null && overrideReason.isNotEmpty) {
-    data['override_reason'] = overrideReason;
+    required String sessionId,
+    required String learnerId,
+    required String verificationMethod,
+    String? overrideReason,
+  }) {
+    final data = <String, dynamic>{
+      'session_id': sessionId,
+      'learner_id': learnerId,
+      'verification_method': verificationMethod,
+    };
+    if (overrideReason != null && overrideReason.isNotEmpty) {
+      data['override_reason'] = overrideReason;
+    }
+    return _dio.post('/attendance/checkout', data: data);
   }
-  return _dio.post('/attendance/checkout', data: data);
-}
+
   Future<Response> getAttendance(String sessionId) {
     return _dio.get('/attendance/$sessionId');
   }
@@ -344,10 +394,14 @@ class ApiService {
     return _dio.get('/auth/me');
   }
 
-  Future<Response> updateMe({required String fullName}) {
-    return _dio.patch('/auth/me', data: {
-      'full_name': fullName,
-    });
+  Future<Response> updateMe({
+    String? fullName,
+    String? phone,
+  }) {
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName;
+    if (phone != null) data['phone'] = phone;
+    return _dio.patch('/auth/me', data: data);
   }
 
   Future<Response> changePassword({
