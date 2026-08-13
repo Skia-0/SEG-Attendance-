@@ -85,6 +85,13 @@ def hubs():
         return redir
     return render_template("admin_hubs.html")
 
+@admin_portal_bp.route("/hubs/<hub_id>")
+def hub_detail(hub_id):
+    redir = _require_admin()
+    if redir:
+        return redir
+    return render_template("admin_hub_detail.html")
+
 
 @admin_portal_bp.route("/coordinators")
 def coordinators():

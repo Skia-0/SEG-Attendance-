@@ -31,39 +31,39 @@ async function loadDashboard() {
         
         const statsGrid = document.getElementById('statsGrid');
         statsGrid.innerHTML = `
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_hubs}</div>
-                <div class="stat-label">Hubs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_coordinators}</div>
-                <div class="stat-label">Coordinators</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_cohorts}</div>
-                <div class="stat-label">Cohorts</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_learners}</div>
-                <div class="stat-label">Learners</div>
-            </div>
-            <div class="stat-card highlight">
-                <div class="stat-value">${overview.active_sessions}</div>
-                <div class="stat-label">Active Sessions Now</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_sessions}</div>
-                <div class="stat-label">Total Sessions</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">${overview.total_reports}</div>
-                <div class="stat-label">Reports Submitted</div>
-            </div>
-            <div class="stat-card highlight">
-                <div class="stat-value">${overview.reports_this_week}</div>
-                <div class="stat-label">Reports This Week</div>
-            </div>
-        `;
+    <div class="stat-card clickable" onclick="window.location.href='/admin/hubs'">
+        <div class="stat-value">${overview.total_hubs}</div>
+        <div class="stat-label">Hubs</div>
+    </div>
+    <div class="stat-card clickable" onclick="window.location.href='/admin/coordinators'">
+        <div class="stat-value">${overview.total_coordinators}</div>
+        <div class="stat-label">Coordinators</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">${overview.total_cohorts}</div>
+        <div class="stat-label">Cohorts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">${overview.total_learners}</div>
+        <div class="stat-label">Learners</div>
+    </div>
+    <div class="stat-card highlight">
+        <div class="stat-value">${overview.active_sessions}</div>
+        <div class="stat-label">Active Sessions Now</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">${overview.total_sessions}</div>
+        <div class="stat-label">Total Sessions</div>
+    </div>
+    <div class="stat-card clickable" onclick="window.location.href='/admin/reports'">
+        <div class="stat-value">${overview.total_reports}</div>
+        <div class="stat-label">Reports Submitted</div>
+    </div>
+    <div class="stat-card highlight clickable" onclick="window.location.href='/admin/reports'">
+        <div class="stat-value">${overview.reports_this_week}</div>
+        <div class="stat-label">Reports This Week</div>
+    </div>
+`;
 
         const logs = await api('/api/admin/audit-log?limit=10');
         const activityDiv = document.getElementById('recentActivity');

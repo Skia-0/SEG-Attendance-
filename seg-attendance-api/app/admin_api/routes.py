@@ -165,14 +165,78 @@ def get_hub_detail(hub_id):
         return jsonify({"error": "Hub not found"}), 404
 
     data = hub.to_dict()
-    data["coordinators"] = [
-        c.to_dict()
-        for c in Coordinator.query.filter_by(hub_id=hub_id).all()
-    ]
-    data["cohorts"] = [
-        c.to_dict()
-        for c in Cohort.query.filter_by(hub_id=hub_id).all()
-    ]
+
+    # Coordinators with lock status
+    coords_data = []
+    for c in Coordinator.query.filter_by(hub_id=hub_id).order_by(
+        Coordinator.full_name
+    ).all():
+        cd = c.to_dict()
+        cd["is_locked"] = (
+            c.locked_until is not None
+            and c.locked_until > datetime.utcnow()
+        )
+        coords_data.append(cd)
+    data["coordinators"] = coords_data
+
+    # Cohorts with counts
+    cohorts_data = []
+    for c in Cohort.query.filter_by(hub_id=hub_id).order_by(
+        Cohort.created_at.desc()
+    ).all():
+        cd = c.to_dict()
+        cd["learner_count"] = Learner.query.filter_by(
+            cohort_id=c.cohort_id
+        ).count()
+        cd["session_count"] = HubSession.query.filter_by(
+            cohort_id=c.cohort_id
+        ).count()
+        cd["active_session"] = HubSession.query.filter_by(
+            cohort_id=c.cohort_id,
+            ended_at=None
+        ).first() is not None
+        cohorts_data.append(cd)
+    data["cohorts"] = cohorts_data
+
+    # Recent activity for this hub
+    recent_logs = AuditLog.query.filter_by(
+        hub_id=hub_id
+    ).order_by(
+        AuditLog.created_at.desc()
+    ).limit(15).all()
+
+    logs_data = []
+    for log in recent_logs:
+        ld = log.to_dict()
+        if log.coordinator_id:
+            coord = Coordinator.query.get(log.coordinator_id)
+            ld["actor_name"] = coord.full_name if coord else "Unknown"
+            ld["actor_type"] = "coordinator"
+        elif log.admin_id:
+            admin = Admin.query.get(log.admin_id)
+            ld["actor_name"] = admin.full_name if admin else "Unknown"
+            ld["actor_type"] = "admin"
+        else:
+            ld["actor_name"] = "System"
+            ld["actor_type"] = "system"
+        logs_data.append(ld)
+    data["recent_activity"] = logs_data
+
+    # Totals
+    data["total_learners"] = Learner.query.join(Cohort).filter(
+        Cohort.hub_id == hub_id
+    ).count()
+    data["total_sessions"] = HubSession.query.join(Cohort).filter(
+        Cohort.hub_id == hub_id
+    ).count()
+    data["active_sessions"] = HubSession.query.join(Cohort).filter(
+        Cohort.hub_id == hub_id,
+        HubSession.ended_at.is_(None)
+    ).count()
+    data["total_reports"] = Report.query.filter_by(
+        hub_id=hub_id
+    ).count()
+
     return jsonify(data), 200
 
 

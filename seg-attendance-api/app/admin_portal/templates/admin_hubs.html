@@ -27,7 +27,7 @@ async function loadHubs() {
         }
 
         container.innerHTML = hubs.map(hub => `
-            <div class="card">
+             <div class="card clickable" onclick="window.location.href='/admin/hubs/${hub.hub_id}'">
                 <div class="card-header">
                     <h3>${escapeHtml(hub.name)}</h3>
                     <span class="badge">${escapeHtml(hub.location || 'No location')}</span>

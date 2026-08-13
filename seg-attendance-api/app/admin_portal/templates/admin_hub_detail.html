@@ -1,0 +1,149 @@
+{% extends "admin_base.html" %}
+{% block title %}Hub Detail{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/admin/hubs" class="back-link">← Back to Hubs</a>
+    <h1 id="hubName">Loading...</h1>
+    <p class="subtitle" id="hubLocation"></p>
+</div>
+
+<div class="stats-grid" id="hubStats">
+    <div class="loading">Loading stats...</div>
+</div>
+
+<div class="two-column">
+    <div class="section">
+        <h2>Coordinators</h2>
+        <div id="hubCoordinators">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Cohorts</h2>
+        <div id="hubCohorts">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Recent Activity</h2>
+    <div id="hubActivity">
+        <div class="loading">Loading...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const hubId = window.location.pathname.split('/').pop();
+loadHubDetail();
+
+async function loadHubDetail() {
+    try {
+        const hub = await api(`/api/admin/hubs/${hubId}`);
+
+        document.getElementById('hubName').textContent = hub.name;
+        document.getElementById('hubLocation').textContent =
+            hub.location || 'No location set';
+
+        // Stats
+        document.getElementById('hubStats').innerHTML = `
+            <div class="stat-card">
+                <div class="stat-value">${hub.coordinators.length}</div>
+                <div class="stat-label">Coordinators</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${hub.cohorts.length}</div>
+                <div class="stat-label">Cohorts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${hub.total_learners}</div>
+                <div class="stat-label">Learners</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-value">${hub.active_sessions}</div>
+                <div class="stat-label">Active Sessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${hub.total_sessions}</div>
+                <div class="stat-label">Total Sessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${hub.total_reports}</div>
+                <div class="stat-label">Reports</div>
+            </div>
+        `;
+
+        // Coordinators
+        const coordDiv = document.getElementById('hubCoordinators');
+        if (hub.coordinators.length === 0) {
+            coordDiv.innerHTML = '<div class="empty">No coordinators yet</div>';
+        } else {
+            coordDiv.innerHTML = hub.coordinators.map(c => `
+                <div class="list-item">
+                    <div class="list-avatar">${c.full_name.charAt(0).toUpperCase()}</div>
+                    <div class="list-body">
+                        <div class="list-title">${escapeHtml(c.full_name)}</div>
+                        <div class="list-sub">${escapeHtml(c.email)}</div>
+                    </div>
+                    <div class="list-badge">
+                        ${c.is_locked
+                            ? '<span class="badge badge-danger">Locked</span>'
+                            : c.email_verified
+                              ? '<span class="badge badge-success">Active</span>'
+                              : '<span class="badge badge-warning">Unverified</span>'
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Cohorts
+        const cohortDiv = document.getElementById('hubCohorts');
+        if (hub.cohorts.length === 0) {
+            cohortDiv.innerHTML = '<div class="empty">No cohorts yet</div>';
+        } else {
+            cohortDiv.innerHTML = hub.cohorts.map(c => `
+                <div class="list-item">
+                    <div class="list-icon">${c.active_session ? '🟠' : '📚'}</div>
+                    <div class="list-body">
+                        <div class="list-title">${escapeHtml(c.name)}</div>
+                        <div class="list-sub">
+                            ${c.learner_count} learners · ${c.session_count} sessions
+                            ${c.active_session ? ' · <strong style="color:#FF6B00">ACTIVE</strong>' : ''}
+                        </div>
+                    </div>
+                    <div class="list-badge">
+                        <span class="badge">${c.min_attendance_percent}% min</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Activity
+        const activityDiv = document.getElementById('hubActivity');
+        if (hub.recent_activity.length === 0) {
+            activityDiv.innerHTML = '<div class="empty">No activity yet</div>';
+        } else {
+            activityDiv.innerHTML = `
+                <div class="activity-list">
+                    ${hub.recent_activity.map(log => `
+                        <div class="activity-item">
+                            <div class="activity-actor">${escapeHtml(log.actor_name || 'System')}</div>
+                            <div class="activity-action">${formatAction(log.action)}</div>
+                            <div class="activity-time">${formatTime(log.created_at)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.error(e);
+        showError('Failed to load hub details');
+    }
+}
+</script>
+{% endblock %}
