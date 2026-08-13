@@ -309,9 +309,21 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
         );
       }
     } catch (e) {
-      final msg = e.toString().contains('already submitted')
-          ? 'Report already submitted for this cohort'
-          : 'Failed to submit report';
+  String msg = 'Failed to submit report';
+  try {
+    final resp = (e as dynamic).response;
+    final err = resp?.data?['error'];
+    if (err != null) {
+      final errStr = err.toString();
+      if (errStr.contains('already submitted')) {
+        msg = 'Final report was already submitted for '
+              'this cohort. Contact your admin if it '
+              'needs correction.';
+      } else {
+        msg = errStr;
+      }
+    }
+  } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

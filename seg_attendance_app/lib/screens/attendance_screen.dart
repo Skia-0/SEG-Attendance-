@@ -439,19 +439,28 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
 
     if (submit == true && mounted) {
-      try {
-        await ApiService()
-            .submitSessionReport(widget.sessionId);
-        if (mounted) _showSnack('Report submitted ✓');
-      } catch (_) {
-        if (mounted) {
-          _showSnack('Failed to submit report', isError: true);
+  try {
+    await ApiService()
+        .submitSessionReport(widget.sessionId);
+    if (mounted) _showSnack('Report submitted ✓');
+  } catch (e) {
+    String msg = 'Failed to submit report';
+    try {
+      final resp = (e as dynamic).response;
+      final err = resp?.data?['error'];
+      if (err != null) {
+        final errStr = err.toString();
+        if (errStr.contains('already submitted')) {
+          msg = 'Report was already submitted for this session.';
+        } else {
+          msg = errStr;
         }
       }
-    }
-
-    if (mounted) Navigator.pop(context);
+    } catch (_) {}
+    if (mounted) _showSnack(msg, isError: true);
   }
+ }
+}
 
   Future<void> _openFingerprintPicker() async {
     final prov = context.read<AttendanceProvider>();

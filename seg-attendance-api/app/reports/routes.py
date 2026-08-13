@@ -140,21 +140,7 @@ def submit_session_report(session_id):
         }), 400
 
     # Warn if 0 attendance and no confirmation
-    data = request.get_json() or {}
-    confirm_empty = data.get("confirm_empty", False)
-
-    attendance_count = AttendanceRecord.query.filter_by(
-        session_id=session.session_id,
-        is_complete=True
-    ).count()
-
-    if attendance_count == 0 and not confirm_empty:
-        return jsonify({
-            "error": "This session has no complete attendance records. "
-                     "Submitting an empty report.",
-            "empty_report": True,
-            "requires_confirmation": True
-        }), 400
+   
 
     existing = Report.query.filter_by(
         session_id=session.session_id,

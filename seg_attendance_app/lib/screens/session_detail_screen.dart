@@ -243,23 +243,37 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      final msg = e.toString().contains('already submitted')
-          ? 'Report already submitted for this session'
-          : 'Failed to submit report';
-      if (msg.contains('already')) {
+  if (!mounted) return;
+  setState(() => _submitting = false);
+
+  String msg = 'Failed to submit report';
+  try {
+    final resp = (e as dynamic).response;
+    final err = resp?.data?['error'];
+    if (err != null) {
+      final errStr = err.toString();
+      if (errStr.contains('already submitted')) {
+        msg = 'This session report was already submitted. '
+              'Contact your admin if it needs correction.';
         setState(() => _alreadySubmitted = true);
+      } else if (errStr.contains('must be ended')) {
+        msg = 'End the session before submitting a report.';
+      } else {
+        msg = errStr;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
-  }
+  } catch (_) {}
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(msg),
+      backgroundColor: Colors.red.shade700,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 4),
+    ),
+  );
+}
+}
 
   @override
   Widget build(BuildContext context) {

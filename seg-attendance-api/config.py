@@ -52,6 +52,12 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = _db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+    "pool_pre_ping": True,
+    "pool_recycle": 280,
+    "pool_size": 5,
+    "max_overflow": 10,
+}
 
     # JWT — access tokens expire in 7 days, refresh tokens in 30 days
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
