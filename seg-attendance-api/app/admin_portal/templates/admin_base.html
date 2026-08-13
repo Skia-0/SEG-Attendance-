@@ -9,7 +9,17 @@
 <body>
 
 {% if session.get('admin_id') %}
-<nav class="sidebar">
+<!-- Mobile top bar -->
+<div class="mobile-topbar">
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="mobile-logo">SEG</div>
+    <div class="mobile-spacer"></div>
+</div>
+
+<!-- Overlay for mobile -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<nav class="sidebar" id="sidebar">
     <div class="sidebar-header">
         <div class="logo">SEG</div>
         <div class="logo-sub">ADMIN PORTAL</div>
@@ -20,7 +30,7 @@
             <span class="icon">📊</span> Dashboard
         </a></li>
         <li><a href="{{ url_for('admin_portal.hubs') }}"
-               class="{% if request.endpoint == 'admin_portal.hubs' %}active{% endif %}">
+               class="{% if request.endpoint == 'admin_portal.hubs' or request.endpoint == 'admin_portal.hub_detail' %}active{% endif %}">
             <span class="icon">🏢</span> Hubs
         </a></li>
         <li><a href="{{ url_for('admin_portal.coordinators') }}"
@@ -69,5 +79,16 @@
 {% endif %}
 <script src="{{ url_for('admin_portal.static', filename='js/admin.js') }}"></script>
 {% block scripts %}{% endblock %}
+
+<script>
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (sidebar && overlay) {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('visible');
+    }
+}
+</script>
 </body>
 </html>
