@@ -1,0 +1,341 @@
+import re
+from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt,
+)
+from app.models import (
+    Admin, Hub, Cohort, Coordinator, Learner,
+    Session as HubSession, AttendanceRecord, Report, AuditLog
+)
+from app.extensions import db, limiter
+from app.services.email_service import EmailService
+
+admin_api_bp = Blueprint("admin_api", __name__)
+
+
+def _validate_password(password):
+    if not password or len(password) < 8:
+        return "Password must be at least 8 characters"
+    if len(password) > 32:
+        return "Password must not exceed 32 characters"
+    if not re.search(r"[A-Za-z]", password):
+        return "Password must contain at least one letter"
+    if not re.search(r"\d", password):
+        return "Password must contain at least one number"
+    return None
+
+
+def get_current_admin():
+    """Get the currently authenticated admin from JWT."""
+    identity = get_jwt_identity()
+    if not identity:
+        return None
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return None
+    return Admin.query.get(identity)
+
+
+def admin_required(fn):
+    """Decorator — ensures caller is a valid admin."""
+    from functools import wraps
+
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        admin = get_current_admin()
+        if not admin:
+            return jsonify({"error": "Admin access required"}), 403
+        if not admin.is_active:
+            return jsonify({"error": "Admin account deactivated"}), 403
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+# ─── AUTH ─────────────────────────────────────────────
+@admin_api_bp.route("/login", methods=["POST"])
+@limiter.limit("5 per minute")
+def admin_login():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    admin = Admin.query.filter_by(email=email).first()
+
+    if not admin or not admin.check_password(password):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    if not admin.is_active:
+        return jsonify({"error": "Admin account deactivated"}), 403
+
+    identity = str(admin.admin_id)
+    additional_claims = {"role": "admin"}
+    access_token = create_access_token(
+        identity=identity, additional_claims=additional_claims
+    )
+    refresh_token = create_refresh_token(
+        identity=identity, additional_claims=additional_claims
+    )
+
+    return jsonify({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "admin_id": str(admin.admin_id),
+        "full_name": admin.full_name,
+        "email": admin.email,
+        "role": admin.role,
+    }), 200
+
+
+@admin_api_bp.route("/me", methods=["GET"])
+@admin_required
+def admin_me():
+    admin = get_current_admin()
+    return jsonify(admin.to_dict()), 200
+
+
+# ─── OVERVIEW ─────────────────────────────────────────
+@admin_api_bp.route("/overview", methods=["GET"])
+@admin_required
+def overview():
+    """High-level stats across all hubs."""
+    total_hubs = Hub.query.count()
+    total_coordinators = Coordinator.query.count()
+    total_cohorts = Cohort.query.count()
+    total_learners = Learner.query.count()
+    total_sessions = HubSession.query.count()
+    total_reports = Report.query.count()
+
+    active_sessions = HubSession.query.filter_by(
+        ended_at=None
+    ).count()
+
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    reports_this_week = Report.query.filter(
+        Report.submitted_at >= week_ago
+    ).count()
+
+    return jsonify({
+        "total_hubs": total_hubs,
+        "total_coordinators": total_coordinators,
+        "total_cohorts": total_cohorts,
+        "total_learners": total_learners,
+        "total_sessions": total_sessions,
+        "total_reports": total_reports,
+        "active_sessions": active_sessions,
+        "reports_this_week": reports_this_week,
+    }), 200
+
+
+# ─── HUBS ─────────────────────────────────────────────
+@admin_api_bp.route("/hubs", methods=["GET"])
+@admin_required
+def list_hubs():
+    hubs = Hub.query.order_by(Hub.name).all()
+    results = []
+    for h in hubs:
+        data = h.to_dict()
+        data["coordinator_count"] = Coordinator.query.filter_by(
+            hub_id=h.hub_id
+        ).count()
+        data["cohort_count"] = Cohort.query.filter_by(
+            hub_id=h.hub_id
+        ).count()
+        data["learner_count"] = Learner.query.join(Cohort).filter(
+            Cohort.hub_id == h.hub_id
+        ).count()
+        results.append(data)
+    return jsonify(results), 200
+
+
+@admin_api_bp.route("/hubs/<hub_id>", methods=["GET"])
+@admin_required
+def get_hub_detail(hub_id):
+    hub = Hub.query.get(hub_id)
+    if not hub:
+        return jsonify({"error": "Hub not found"}), 404
+
+    data = hub.to_dict()
+    data["coordinators"] = [
+        c.to_dict()
+        for c in Coordinator.query.filter_by(hub_id=hub_id).all()
+    ]
+    data["cohorts"] = [
+        c.to_dict()
+        for c in Cohort.query.filter_by(hub_id=hub_id).all()
+    ]
+    return jsonify(data), 200
+
+
+# ─── COORDINATORS ─────────────────────────────────────
+@admin_api_bp.route("/coordinators", methods=["GET"])
+@admin_required
+def list_coordinators():
+    hub_id = request.args.get("hub_id")
+
+    query = Coordinator.query
+    if hub_id:
+        query = query.filter_by(hub_id=hub_id)
+
+    coordinators = query.order_by(Coordinator.full_name).all()
+
+    results = []
+    for c in coordinators:
+        data = c.to_dict()
+        hub = Hub.query.get(c.hub_id)
+        data["hub_name"] = hub.name if hub else ""
+        data["is_locked"] = (
+            c.locked_until is not None
+            and c.locked_until > datetime.utcnow()
+        )
+        results.append(data)
+
+    return jsonify(results), 200
+
+
+@admin_api_bp.route(
+    "/coordinators/<coordinator_id>/unlock", methods=["POST"]
+)
+@admin_required
+def unlock_coordinator(coordinator_id):
+    admin = get_current_admin()
+    coord = Coordinator.query.get(coordinator_id)
+    if not coord:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    coord.locked_until = None
+    coord.failed_login_attempts = 0
+    db.session.commit()
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=coord.hub_id,
+        action="admin.coordinator_unlocked",
+        resource_type="coordinator",
+        resource_id=str(coord.coordinator_id),
+        details={"admin_email": admin.email},
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    return jsonify({"message": "Coordinator unlocked"}), 200
+
+
+@admin_api_bp.route(
+    "/coordinators/<coordinator_id>/reset-password",
+    methods=["POST"]
+)
+@admin_required
+def admin_reset_coordinator_password(coordinator_id):
+    admin = get_current_admin()
+    coord = Coordinator.query.get(coordinator_id)
+    if not coord:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    # Trigger a password reset OTP email
+    otp = EmailService.generate_otp(
+        coord.email, purpose="password_reset"
+    )
+    EmailService.send_password_reset_otp(
+        coord.email, coord.full_name, otp
+    )
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=coord.hub_id,
+        action="admin.coordinator_password_reset_sent",
+        resource_type="coordinator",
+        resource_id=str(coord.coordinator_id),
+        details={"admin_email": admin.email},
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Password reset code sent to {coord.email}"
+    }), 200
+
+
+# ─── REPORTS ──────────────────────────────────────────
+@admin_api_bp.route("/reports", methods=["GET"])
+@admin_required
+def list_all_reports():
+    hub_id = request.args.get("hub_id")
+    report_type = request.args.get("type")
+
+    query = Report.query
+    if hub_id:
+        query = query.filter_by(hub_id=hub_id)
+    if report_type:
+        query = query.filter_by(report_type=report_type)
+
+    reports = query.order_by(Report.submitted_at.desc()).all()
+
+    results = []
+    for r in reports:
+        data = r.to_dict()
+        hub = Hub.query.get(r.hub_id)
+        cohort = Cohort.query.get(r.cohort_id)
+        data["hub_name"] = hub.name if hub else ""
+        data["cohort_name"] = cohort.name if cohort else ""
+        results.append(data)
+
+    return jsonify(results), 200
+
+
+@admin_api_bp.route("/reports/<report_id>", methods=["GET"])
+@admin_required
+def get_report_detail(report_id):
+    report = Report.query.get(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    data = report.to_dict()
+    hub = Hub.query.get(report.hub_id)
+    cohort = Cohort.query.get(report.cohort_id)
+    data["hub_name"] = hub.name if hub else ""
+    data["cohort_name"] = cohort.name if cohort else ""
+    return jsonify(data), 200
+
+
+# ─── AUDIT LOG ────────────────────────────────────────
+@admin_api_bp.route("/audit-log", methods=["GET"])
+@admin_required
+def hub_wide_audit_log():
+    hub_id = request.args.get("hub_id")
+    limit = min(int(request.args.get("limit", 200)), 1000)
+
+    query = AuditLog.query
+    if hub_id:
+        query = query.filter_by(hub_id=hub_id)
+
+    logs = query.order_by(
+        AuditLog.created_at.desc()
+    ).limit(limit).all()
+
+    results = []
+    for log in logs:
+        data = log.to_dict()
+        if log.coordinator_id:
+            coord = Coordinator.query.get(log.coordinator_id)
+            data["actor_name"] = coord.full_name if coord else "Unknown"
+            data["actor_type"] = "coordinator"
+        elif log.admin_id:
+            admin = Admin.query.get(log.admin_id)
+            data["actor_name"] = admin.full_name if admin else "Unknown"
+            data["actor_type"] = "admin"
+        else:
+            data["actor_name"] = "System"
+            data["actor_type"] = "system"
+        results.append(data)
+
+    return jsonify(results), 200
