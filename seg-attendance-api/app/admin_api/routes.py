@@ -306,6 +306,110 @@ def get_report_detail(report_id):
     data["cohort_name"] = cohort.name if cohort else ""
     return jsonify(data), 200
 
+@admin_api_bp.route("/reports/<report_id>/pdf", methods=["GET"])
+@admin_required
+def download_report_pdf(report_id):
+    from flask import Response
+    from app.services.report_export import ReportExporter
+
+    report = Report.query.get(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    hub = Hub.query.get(report.hub_id)
+    cohort = Cohort.query.get(report.cohort_id)
+    hub_name = hub.name if hub else "Unknown Hub"
+    cohort_name = cohort.name if cohort else "Unknown Cohort"
+
+    pdf_bytes = ReportExporter.to_pdf(report, hub_name, cohort_name)
+
+    filename_parts = [
+        report.report_type,
+        cohort_name.replace(" ", "_"),
+        report.submitted_at.strftime("%Y%m%d")
+        if report.submitted_at else "report"
+    ]
+    filename = "_".join(filename_parts) + ".pdf"
+
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@admin_api_bp.route("/reports/<report_id>/csv", methods=["GET"])
+@admin_required
+def download_report_csv(report_id):
+    from flask import Response
+    from app.services.report_export import ReportExporter
+
+    report = Report.query.get(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    hub = Hub.query.get(report.hub_id)
+    cohort = Cohort.query.get(report.cohort_id)
+    hub_name = hub.name if hub else "Unknown Hub"
+    cohort_name = cohort.name if cohort else "Unknown Cohort"
+
+    csv_string = ReportExporter.to_csv(report, hub_name, cohort_name)
+
+    filename_parts = [
+        report.report_type,
+        cohort_name.replace(" ", "_"),
+        report.submitted_at.strftime("%Y%m%d")
+        if report.submitted_at else "report"
+    ]
+    filename = "_".join(filename_parts) + ".csv"
+
+    return Response(
+        csv_string,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@admin_api_bp.route("/reports/<report_id>/json", methods=["GET"])
+@admin_required
+def download_report_json(report_id):
+    from flask import Response
+    import json
+
+    report = Report.query.get(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    hub = Hub.query.get(report.hub_id)
+    cohort = Cohort.query.get(report.cohort_id)
+
+    full_data = report.to_dict()
+    full_data["hub_name"] = hub.name if hub else ""
+    full_data["cohort_name"] = cohort.name if cohort else ""
+
+    filename_parts = [
+        report.report_type,
+        (cohort.name if cohort else "report").replace(" ", "_"),
+        report.submitted_at.strftime("%Y%m%d")
+        if report.submitted_at else "report"
+    ]
+    filename = "_".join(filename_parts) + ".json"
+
+    return Response(
+        json.dumps(full_data, indent=2),
+        mimetype="application/json",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{filename}"'
+        }
+    )
+
 
 # ─── AUDIT LOG ────────────────────────────────────────
 @admin_api_bp.route("/audit-log", methods=["GET"])

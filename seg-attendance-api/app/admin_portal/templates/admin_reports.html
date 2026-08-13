@@ -18,10 +18,37 @@
 <div id="reportsList">
     <div class="loading">Loading reports...</div>
 </div>
+
+<!-- Modal -->
+<div id="reportModal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2 id="modalTitle">Report</h2>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <div class="loading">Loading...</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-sm" onclick="closeModal()">Close</button>
+            <button class="btn-sm btn-orange" id="downloadPdfBtn">
+                Download PDF
+            </button>
+            <button class="btn-sm btn-orange" id="downloadCsvBtn">
+                Download CSV
+            </button>
+            <button class="btn-sm" id="downloadJsonBtn">
+                Download JSON
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+let currentReportId = null;
+
 loadReports();
 
 async function loadReports() {
@@ -72,12 +99,230 @@ async function loadReports() {
 }
 
 async function viewReport(id) {
+    currentReportId = id;
+    document.getElementById('reportModal').style.display = 'flex';
+    document.getElementById('modalBody').innerHTML =
+        '<div class="loading">Loading report...</div>';
+
     try {
         const r = await api(`/api/admin/reports/${id}`);
-        alert('Report details:\n\n' + JSON.stringify(r.data, null, 2));
+        const isSession = r.report_type === 'session';
+        document.getElementById('modalTitle').textContent =
+            isSession ? 'Session Report' : 'Cohort Final Report';
+
+        document.getElementById('modalBody').innerHTML =
+            renderReportDetail(r);
+
+        // Wire up download buttons
+        document.getElementById('downloadPdfBtn').onclick = () =>
+            downloadReport(id, 'pdf');
+        document.getElementById('downloadCsvBtn').onclick = () =>
+            downloadReport(id, 'csv');
+        document.getElementById('downloadJsonBtn').onclick = () =>
+            downloadReport(id, 'json');
     } catch (e) {
-        showError('Failed to load report');
+        document.getElementById('modalBody').innerHTML =
+            '<div class="empty">Failed to load report</div>';
     }
+}
+
+function renderReportDetail(r) {
+    const isSession = r.report_type === 'session';
+    const data = r.data;
+
+    if (isSession) {
+        const attendance = data.attendance || [];
+        return `
+            <div class="detail-section">
+                <h3>Session Information</h3>
+                <div class="detail-grid">
+                    <div><label>Hub</label><span>${escapeHtml(r.hub_name)}</span></div>
+                    <div><label>Cohort</label><span>${escapeHtml(r.cohort_name)}</span></div>
+                    <div><label>Session</label><span>${escapeHtml(data.session_title || '—')}</span></div>
+                    <div><label>Started</label><span>${formatDate(data.started_at)}</span></div>
+                    <div><label>Ended</label><span>${formatDate(data.ended_at)}</span></div>
+                    <div><label>Submitted</label><span>${formatDate(r.submitted_at)}</span></div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Summary</h3>
+                <div class="detail-stats">
+                    <div class="detail-stat">
+                        <div class="detail-stat-value">${data.total_learners || 0}</div>
+                        <div class="detail-stat-label">Total</div>
+                    </div>
+                    <div class="detail-stat">
+                        <div class="detail-stat-value">${data.attended_count || 0}</div>
+                        <div class="detail-stat-label">Complete</div>
+                    </div>
+                    <div class="detail-stat">
+                        <div class="detail-stat-value">${(data.total_learners || 0) - (data.attended_count || 0)}</div>
+                        <div class="detail-stat-label">Absent/Partial</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Attendance Details</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SEG ID</th>
+                            <th>Name</th>
+                            <th>Check In</th>
+                            <th>Check Out</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${attendance.map(a => {
+                            const status = a.is_complete
+                                ? '<span class="badge badge-success">COMPLETE</span>'
+                                : a.checked_in_at
+                                  ? '<span class="badge badge-warning">PARTIAL</span>'
+                                  : '<span class="badge badge-danger">ABSENT</span>';
+                            return `
+                                <tr>
+                                    <td class="mono">${escapeHtml(a.seg_id || '—')}</td>
+                                    <td>${escapeHtml(a.full_name || '—')}</td>
+                                    <td>${a.checked_in_at ? formatTime(a.checked_in_at) : '—'}</td>
+                                    <td>${a.checked_out_at ? formatTime(a.checked_out_at) : '—'}</td>
+                                    <td>${escapeHtml(a.verification_method || '—')}</td>
+                                    <td>${status}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } else {
+        const learners = data.learners || [];
+        const certified = learners.filter(l => l.certified);
+        const notCertified = learners.filter(l => !l.certified);
+
+        return `
+            <div class="detail-section">
+                <h3>Cohort Information</h3>
+                <div class="detail-grid">
+                    <div><label>Hub</label><span>${escapeHtml(r.hub_name)}</span></div>
+                    <div><label>Cohort</label><span>${escapeHtml(data.cohort_name || '—')}</span></div>
+                    <div><label>Threshold</label><span>${data.min_attendance_percent || 0}%</span></div>
+                    <div><label>Total Sessions</label><span>${data.total_sessions || 0}</span></div>
+                    <div><label>Submitted</label><span>${formatDate(r.submitted_at)}</span></div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Certification Results</h3>
+                <div class="detail-stats">
+                    <div class="detail-stat">
+                        <div class="detail-stat-value">${data.total_learners || 0}</div>
+                        <div class="detail-stat-label">Enrolled</div>
+                    </div>
+                    <div class="detail-stat">
+                        <div class="detail-stat-value" style="color:#2E7D32">${data.certified_count || 0}</div>
+                        <div class="detail-stat-label">Certified</div>
+                    </div>
+                    <div class="detail-stat">
+                        <div class="detail-stat-value" style="color:#C62828">${(data.total_learners || 0) - (data.certified_count || 0)}</div>
+                        <div class="detail-stat-label">Not Certified</div>
+                    </div>
+                </div>
+            </div>
+
+            ${certified.length > 0 ? `
+            <div class="detail-section">
+                <h3>Certified Learners (${certified.length})</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SEG ID</th>
+                            <th>Name</th>
+                            <th>Attended</th>
+                            <th>Attendance %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${certified.map(l => `
+                            <tr>
+                                <td class="mono">${escapeHtml(l.seg_id || '—')}</td>
+                                <td>${escapeHtml(l.full_name || '—')}</td>
+                                <td>${l.sessions_attended || 0} / ${l.total_sessions || 0}</td>
+                                <td><strong style="color:#2E7D32">${(l.attendance_percent || 0).toFixed(1)}%</strong></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ` : ''}
+
+            ${notCertified.length > 0 ? `
+            <div class="detail-section">
+                <h3>Did Not Qualify (${notCertified.length})</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SEG ID</th>
+                            <th>Name</th>
+                            <th>Attended</th>
+                            <th>Attendance %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${notCertified.map(l => `
+                            <tr>
+                                <td class="mono">${escapeHtml(l.seg_id || '—')}</td>
+                                <td>${escapeHtml(l.full_name || '—')}</td>
+                                <td>${l.sessions_attended || 0} / ${l.total_sessions || 0}</td>
+                                <td><strong style="color:#C62828">${(l.attendance_percent || 0).toFixed(1)}%</strong></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ` : ''}
+        `;
+    }
+}
+
+function closeModal() {
+    document.getElementById('reportModal').style.display = 'none';
+    currentReportId = null;
+}
+
+async function downloadReport(id, format) {
+    const token = localStorage.getItem('admin_token');
+    try {
+        const res = await fetch(`/api/admin/reports/${id}/${format}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Download failed');
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = getFilenameFromResponse(res, format);
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        showSuccess(`${format.toUpperCase()} downloaded`);
+    } catch (e) {
+        showError('Failed to download');
+    }
+}
+
+function getFilenameFromResponse(res, format) {
+    const disposition = res.headers.get('Content-Disposition');
+    if (disposition) {
+        const match = disposition.match(/filename="(.+)"/);
+        if (match) return match[1];
+    }
+    return `report.${format}`;
 }
 </script>
 {% endblock %}
