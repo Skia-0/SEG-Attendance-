@@ -1,0 +1,33 @@
+{% extends "admin_base.html" %}
+{% block title %}Sign In{% endblock %}
+
+{% block auth_content %}
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-logo">SEG</div>
+        <div class="login-sub">ADMIN PORTAL</div>
+        <h1>Sign In</h1>
+        <p class="login-desc">Central management for all hubs</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('admin_portal.login') }}">
+            <label>Email</label>
+            <input type="email" name="email" required autofocus>
+
+            <label>Password</label>
+            <input type="password" name="password" required>
+
+            <button type="submit">Sign In</button>
+        </form>
+
+        <p class="login-note">Internal use only · SEG Central</p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "admin_base.html" %}
+{% block title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Audit Log</h1>
+    <p class="subtitle">All actions across the system</p>
+</div>
+
+<div id="auditList">
+    <div class="loading">Loading audit log...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadAuditLog();
+
+async function loadAuditLog() {
+    try {
+        const logs = await api('/api/admin/audit-log?limit=200');
+        const container = document.getElementById('auditList');
+
+        if (logs.length === 0) {
+            container.innerHTML = '<div class="empty">No activity logged yet</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Who</th>
+                        <th>Type</th>
+                        <th>Action</th>
+                        <th>Resource</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${logs.map(log => `
+                        <tr>
+                            <td class="time-cell">${formatTime(log.created_at)}</td>
+                            <td><strong>${escapeHtml(log.actor_name || 'System')}</strong></td>
+                            <td><span class="badge badge-${log.actor_type}">${log.actor_type}</span></td>
+                            <td>${formatAction(log.action)}</td>
+                            <td class="mono">${log.resource_type}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (e) {
+        showError('Failed to load audit log');
+    }
+}
+</script>
+{% endblock %}

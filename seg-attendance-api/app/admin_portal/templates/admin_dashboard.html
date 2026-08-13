@@ -1,0 +1,88 @@
+{% extends "admin_base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p class="subtitle">Overview across all SEG hubs</p>
+</div>
+
+<div class="stats-grid" id="statsGrid">
+    <div class="stat-card">
+        <div class="stat-loading">Loading...</div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Recent Activity</h2>
+    <div id="recentActivity" class="activity-list">
+        <div class="loading">Loading activity...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadDashboard();
+
+async function loadDashboard() {
+    try {
+        const overview = await api('/api/admin/overview');
+        
+        const statsGrid = document.getElementById('statsGrid');
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_hubs}</div>
+                <div class="stat-label">Hubs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_coordinators}</div>
+                <div class="stat-label">Coordinators</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_cohorts}</div>
+                <div class="stat-label">Cohorts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_learners}</div>
+                <div class="stat-label">Learners</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-value">${overview.active_sessions}</div>
+                <div class="stat-label">Active Sessions Now</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_sessions}</div>
+                <div class="stat-label">Total Sessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${overview.total_reports}</div>
+                <div class="stat-label">Reports Submitted</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-value">${overview.reports_this_week}</div>
+                <div class="stat-label">Reports This Week</div>
+            </div>
+        `;
+
+        const logs = await api('/api/admin/audit-log?limit=10');
+        const activityDiv = document.getElementById('recentActivity');
+        
+        if (logs.length === 0) {
+            activityDiv.innerHTML = '<div class="empty">No recent activity</div>';
+        } else {
+            activityDiv.innerHTML = logs.map(log => `
+                <div class="activity-item">
+                    <div class="activity-actor">${escapeHtml(log.actor_name || 'System')}</div>
+                    <div class="activity-action">${formatAction(log.action)}</div>
+                    <div class="activity-time">${formatTime(log.created_at)}</div>
+                </div>
+            `).join('');
+        }
+    } catch (e) {
+        console.error(e);
+        showError('Failed to load dashboard');
+    }
+}
+</script>
+{% endblock %}

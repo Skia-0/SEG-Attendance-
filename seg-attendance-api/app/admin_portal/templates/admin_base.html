@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} · SEG Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('admin_portal.static', filename='css/admin.css') }}">
+</head>
+<body>
+
+{% if session.get('admin_id') %}
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <div class="logo">SEG</div>
+        <div class="logo-sub">ADMIN PORTAL</div>
+    </div>
+    <ul class="nav-links">
+        <li><a href="{{ url_for('admin_portal.dashboard') }}" 
+               class="{% if request.endpoint == 'admin_portal.dashboard' %}active{% endif %}">
+            <span class="icon">📊</span> Dashboard
+        </a></li>
+        <li><a href="{{ url_for('admin_portal.hubs') }}"
+               class="{% if request.endpoint == 'admin_portal.hubs' %}active{% endif %}">
+            <span class="icon">🏢</span> Hubs
+        </a></li>
+        <li><a href="{{ url_for('admin_portal.coordinators') }}"
+               class="{% if request.endpoint == 'admin_portal.coordinators' %}active{% endif %}">
+            <span class="icon">👥</span> Coordinators
+        </a></li>
+        <li><a href="{{ url_for('admin_portal.reports') }}"
+               class="{% if request.endpoint == 'admin_portal.reports' %}active{% endif %}">
+            <span class="icon">📄</span> Reports
+        </a></li>
+        <li><a href="{{ url_for('admin_portal.audit_log') }}"
+               class="{% if request.endpoint == 'admin_portal.audit_log' %}active{% endif %}">
+            <span class="icon">📜</span> Audit Log
+        </a></li>
+    </ul>
+    <div class="sidebar-footer">
+        <div class="admin-info">
+            <div class="admin-name">{{ session.get('admin_name') }}</div>
+            <div class="admin-role">{{ session.get('admin_role') }}</div>
+        </div>
+        <a href="{{ url_for('admin_portal.logout') }}" class="logout-btn">Sign Out</a>
+    </div>
+</nav>
+
+<main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+{% else %}
+<main class="auth-content">
+    {% block auth_content %}{% endblock %}
+</main>
+{% endif %}
+
+{% if admin_token %}
+<script>
+    localStorage.setItem('admin_token', '{{ admin_token }}');
+</script>
+{% endif %}
+<script src="{{ url_for('admin_portal.static', filename='js/admin.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

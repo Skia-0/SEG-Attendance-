@@ -1,0 +1,96 @@
+{% extends "admin_base.html" %}
+{% block title %}Coordinators{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Coordinators</h1>
+    <p class="subtitle">Manage all hub coordinators</p>
+</div>
+
+<div id="coordinatorsTable" class="table-container">
+    <div class="loading">Loading coordinators...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadCoordinators();
+
+async function loadCoordinators() {
+    try {
+        const coords = await api('/api/admin/coordinators');
+        const container = document.getElementById('coordinatorsTable');
+
+        if (coords.length === 0) {
+            container.innerHTML = '<div class="empty">No coordinators registered yet</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Hub</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${coords.map(c => `
+                        <tr>
+                            <td><strong>${escapeHtml(c.full_name)}</strong></td>
+                            <td>${escapeHtml(c.email)}</td>
+                            <td>${escapeHtml(c.hub_name || '-')}</td>
+                            <td><span class="badge">${escapeHtml(c.role)}</span></td>
+                            <td>
+                                ${c.is_locked
+                                    ? '<span class="badge badge-danger">Locked</span>'
+                                    : c.email_verified
+                                      ? '<span class="badge badge-success">Active</span>'
+                                      : '<span class="badge badge-warning">Unverified</span>'
+                                }
+                            </td>
+                            <td>
+                                ${c.is_locked
+                                    ? `<button class="btn-sm" onclick="unlockCoord('${c.coordinator_id}')">Unlock</button>`
+                                    : ''
+                                }
+                                <button class="btn-sm btn-orange" onclick="resetCoordPassword('${c.coordinator_id}', '${escapeHtml(c.email)}')">
+                                    Reset Password
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (e) {
+        showError('Failed to load coordinators');
+    }
+}
+
+async function unlockCoord(id) {
+    if (!confirm('Unlock this coordinator?')) return;
+    try {
+        await api(`/api/admin/coordinators/${id}/unlock`, 'POST');
+        showSuccess('Coordinator unlocked');
+        loadCoordinators();
+    } catch (e) {
+        showError('Failed to unlock');
+    }
+}
+
+async function resetCoordPassword(id, email) {
+    if (!confirm(`Send password reset code to ${email}?`)) return;
+    try {
+        await api(`/api/admin/coordinators/${id}/reset-password`, 'POST');
+        showSuccess(`Reset code sent to ${email}`);
+    } catch (e) {
+        showError('Failed to send reset code');
+    }
+}
+</script>
+{% endblock %}

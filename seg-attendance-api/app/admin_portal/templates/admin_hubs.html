@@ -1,0 +1,59 @@
+{% extends "admin_base.html" %}
+{% block title %}Hubs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Hubs</h1>
+    <p class="subtitle">All registered SEG hubs</p>
+</div>
+
+<div id="hubsList" class="cards-grid">
+    <div class="loading">Loading hubs...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadHubs();
+
+async function loadHubs() {
+    try {
+        const hubs = await api('/api/admin/hubs');
+        const container = document.getElementById('hubsList');
+
+        if (hubs.length === 0) {
+            container.innerHTML = '<div class="empty">No hubs registered yet</div>';
+            return;
+        }
+
+        container.innerHTML = hubs.map(hub => `
+            <div class="card">
+                <div class="card-header">
+                    <h3>${escapeHtml(hub.name)}</h3>
+                    <span class="badge">${escapeHtml(hub.location || 'No location')}</span>
+                </div>
+                <div class="card-stats">
+                    <div class="mini-stat">
+                        <div class="mini-value">${hub.coordinator_count}</div>
+                        <div class="mini-label">Coordinators</div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="mini-value">${hub.cohort_count}</div>
+                        <div class="mini-label">Cohorts</div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="mini-value">${hub.learner_count}</div>
+                        <div class="mini-label">Learners</div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    Created ${formatDate(hub.created_at)}
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        showError('Failed to load hubs');
+    }
+}
+</script>
+{% endblock %}

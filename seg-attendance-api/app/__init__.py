@@ -87,9 +87,9 @@ def create_app(config_class=Config):
     from app.nfc_cards.routes import nfc_cards_bp
     from app.sessions.routes import sessions_bp
     from app.attendance.routes import attendance_bp
-    from app.dashboard.routes import dashboard_bp
     from app.reports.routes import reports_bp
     from app.admin_api.routes import admin_api_bp
+    from app.admin_portal.routes import admin_portal_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(hubs_bp, url_prefix="/api/hubs")
@@ -98,8 +98,8 @@ def create_app(config_class=Config):
     app.register_blueprint(nfc_cards_bp, url_prefix="/api/nfc-cards")
     app.register_blueprint(sessions_bp, url_prefix="/api/sessions")
     app.register_blueprint(attendance_bp, url_prefix="/api/attendance")
-    app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
     app.register_blueprint(reports_bp, url_prefix="/api/reports")
     app.register_blueprint(admin_api_bp, url_prefix="/api/admin")
+    app.register_blueprint(admin_portal_bp, url_prefix="/admin")
 
     return app

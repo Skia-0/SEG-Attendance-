@@ -1,0 +1,83 @@
+{% extends "admin_base.html" %}
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Reports</h1>
+    <p class="subtitle">Submitted attendance reports from all hubs</p>
+</div>
+
+<div class="filters">
+    <select id="typeFilter" onchange="loadReports()">
+        <option value="">All Types</option>
+        <option value="session">Session Reports</option>
+        <option value="cohort_final">Cohort Final Reports</option>
+    </select>
+</div>
+
+<div id="reportsList">
+    <div class="loading">Loading reports...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadReports();
+
+async function loadReports() {
+    try {
+        const type = document.getElementById('typeFilter').value;
+        const url = type
+            ? `/api/admin/reports?type=${type}`
+            : '/api/admin/reports';
+        const reports = await api(url);
+        const container = document.getElementById('reportsList');
+
+        if (reports.length === 0) {
+            container.innerHTML = '<div class="empty">No reports submitted yet</div>';
+            return;
+        }
+
+        container.innerHTML = reports.map(r => {
+            const isSession = r.report_type === 'session';
+            const title = isSession
+                ? (r.data.session_title || 'Session')
+                : (r.data.cohort_name || 'Cohort');
+            const stats = isSession
+                ? `${r.data.attended_count || 0}/${r.data.total_learners || 0} attended`
+                : `${r.data.certified_count || 0}/${r.data.total_learners || 0} certified`;
+
+            return `
+                <div class="report-card" onclick="viewReport('${r.report_id}')">
+                    <div class="report-icon ${isSession ? 'session' : 'cohort'}">
+                        ${isSession ? '📅' : '🎓'}
+                    </div>
+                    <div class="report-body">
+                        <div class="report-title">${escapeHtml(title)}</div>
+                        <div class="report-meta">
+                            <span>${escapeHtml(r.hub_name)}</span>
+                            <span>·</span>
+                            <span>${escapeHtml(r.cohort_name)}</span>
+                            <span>·</span>
+                            <span>${formatDate(r.submitted_at)}</span>
+                        </div>
+                    </div>
+                    <div class="report-stats">${stats}</div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        showError('Failed to load reports');
+    }
+}
+
+async function viewReport(id) {
+    try {
+        const r = await api(`/api/admin/reports/${id}`);
+        alert('Report details:\n\n' + JSON.stringify(r.data, null, 2));
+    } catch (e) {
+        showError('Failed to load report');
+    }
+}
+</script>
+{% endblock %}
