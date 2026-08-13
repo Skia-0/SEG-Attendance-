@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'register_coordinator_screen.dart';
 import 'verify_otp_screen.dart';
 import 'forgot_password_screen.dart';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,7 +40,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
-    if (result == null) return; // success — AuthGate will navigate
+    if (result == null) {
+      // Success — navigate to home
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+      return;
+    }
 
     // Special case — unverified email
     if (result.startsWith('UNVERIFIED:')) {

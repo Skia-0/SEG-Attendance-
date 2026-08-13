@@ -7,6 +7,7 @@ import 'change_password_screen.dart';
 import 'about_screen.dart';
 import 'reports_history_screen.dart';
 import 'activity_log_screen.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -90,6 +91,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _editPhone() async {
+    final controller =
+        TextEditingController(text: _me?.phone ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Recovery Phone'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Phone Number',
+            hintText: '024XXXXXXX',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    try {
+      await _api.updateMe(phone: result);
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Phone updated'),
+            backgroundColor: Color(0xFFFF6B00),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to update phone'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -116,7 +173,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     await context.read<AuthProvider>().logout();
     if (mounted) {
-      Navigator.of(context).popUntil((r) => r.isFirst);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
     }
   }
 
@@ -154,7 +214,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           CircleAvatar(
                             radius: 36,
-                            backgroundColor: const Color(0xFFFF6B00),
+                            backgroundColor:
+                                const Color(0xFFFF6B00),
                             child: Text(
                               _me!.fullName
                                   .substring(0, 1)
@@ -177,7 +238,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _me!.phone,
+                            _me!.email,
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.7),
                               fontSize: 13,
@@ -197,9 +258,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onTap: _editName,
                         ),
                         _Tile(
+                          icon: Icons.email_outlined,
+                          label: 'Email',
+                          value: _me!.email,
+                        ),
+                        _Tile(
                           icon: Icons.phone_outlined,
-                          label: 'Phone',
-                          value: _me!.phone,
+                          label: 'Phone (recovery)',
+                          value: _me!.phone?.isNotEmpty == true
+                              ? _me!.phone!
+                              : 'Not set',
+                          onTap: _editPhone,
                         ),
                         _Tile(
                           icon: Icons.lock_outline,

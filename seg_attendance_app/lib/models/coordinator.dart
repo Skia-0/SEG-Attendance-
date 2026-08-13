@@ -1,7 +1,8 @@
 class Coordinator {
   final String coordinatorId;
   final String fullName;
-  final String phone;
+  final String email;
+  final String? phone;
   final String hubId;
   final String? hubName;
   final String? hubLocation;
@@ -9,7 +10,8 @@ class Coordinator {
   Coordinator({
     required this.coordinatorId,
     required this.fullName,
-    required this.phone,
+    required this.email,
+    this.phone,
     required this.hubId,
     this.hubName,
     this.hubLocation,
@@ -19,7 +21,8 @@ class Coordinator {
     return Coordinator(
       coordinatorId: json['coordinator_id']?.toString() ?? '',
       fullName: json['full_name']?.toString() ?? '',
-      phone: json['phone']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      phone: json['phone']?.toString(),
       hubId: json['hub_id']?.toString() ?? '',
       hubName: json['hub_name']?.toString(),
       hubLocation: json['hub_location']?.toString(),

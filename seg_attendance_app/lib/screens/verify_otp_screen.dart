@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import 'reset_password_screen.dart';
+import 'home_screen.dart';
 
 class VerifyOtpScreen extends StatefulWidget {
   final String email;
@@ -60,7 +61,11 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
       setState(() => _loading = false);
 
       if (error == null) {
-        Navigator.of(context).popUntil((r) => r.isFirst);
+        // Success — navigate to home
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
+        );
       } else {
         _showError(error);
       }
