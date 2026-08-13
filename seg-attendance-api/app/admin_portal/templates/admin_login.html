@@ -22,12 +22,34 @@
             <input type="email" name="email" required autofocus>
 
             <label>Password</label>
-            <input type="password" name="password" required>
+            <div class="password-field">
+                <input type="password" name="password" id="loginPassword" required>
+                <button type="button" class="eye-btn" onclick="togglePw('loginPassword', this)">
+                    <span>👁</span>
+                </button>
+            </div>
 
-            <button type="submit">Sign In</button>
+            <div class="form-links">
+                <a href="{{ url_for('admin_portal.forgot_password') }}">Forgot password?</a>
+            </div>
+
+            <button type="submit" class="submit-btn">Sign In</button>
         </form>
 
         <p class="login-note">Internal use only · SEG Central</p>
     </div>
 </div>
+
+<script>
+function togglePw(id, btn) {
+    const input = document.getElementById(id);
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.querySelector('span').textContent = '👁‍🗨';
+    } else {
+        input.type = 'password';
+        btn.querySelector('span').textContent = '👁';
+    }
+}
+</script>
 {% endblock %}

@@ -1,22 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Admin{% endblock %} · SEG Attendance</title>
     <link rel="stylesheet" href="{{ url_for('admin_portal.static', filename='css/admin.css') }}">
+    <script>
+        // Apply theme immediately to prevent flash
+        (function() {
+            const saved = localStorage.getItem('admin_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
 </head>
 <body>
 
 {% if session.get('admin_id') %}
-<!-- Mobile top bar -->
 <div class="mobile-topbar">
     <button class="hamburger" onclick="toggleSidebar()">☰</button>
     <div class="mobile-logo">SEG</div>
-    <div class="mobile-spacer"></div>
+    <button class="notif-btn-mobile" onclick="toggleNotifications()">🔔<span id="notifBadgeMobile" class="notif-badge"></span></button>
 </div>
 
-<!-- Overlay for mobile -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
 <nav class="sidebar" id="sidebar">
@@ -30,7 +35,7 @@
             <span class="icon">📊</span> Dashboard
         </a></li>
         <li><a href="{{ url_for('admin_portal.hubs') }}"
-               class="{% if request.endpoint == 'admin_portal.hubs' or request.endpoint == 'admin_portal.hub_detail' %}active{% endif %}">
+               class="{% if request.endpoint in ['admin_portal.hubs', 'admin_portal.hub_detail'] %}active{% endif %}">
             <span class="icon">🏢</span> Hubs
         </a></li>
         <li><a href="{{ url_for('admin_portal.coordinators') }}"
@@ -45,6 +50,11 @@
                class="{% if request.endpoint == 'admin_portal.audit_log' %}active{% endif %}">
             <span class="icon">📜</span> Audit Log
         </a></li>
+        <li class="nav-divider"></li>
+        <li><a href="{{ url_for('admin_portal.settings') }}"
+               class="{% if request.endpoint == 'admin_portal.settings' %}active{% endif %}">
+            <span class="icon">⚙️</span> Settings
+        </a></li>
     </ul>
     <div class="sidebar-footer">
         <div class="admin-info">
@@ -55,7 +65,24 @@
     </div>
 </nav>
 
+<div class="notif-panel" id="notifPanel">
+    <div class="notif-header">
+        <h3>Notifications</h3>
+        <button class="notif-close" onclick="toggleNotifications()">✕</button>
+    </div>
+    <div class="notif-body" id="notifBody">
+        <div class="loading">Loading...</div>
+    </div>
+</div>
+
 <main class="main-content">
+    <div class="topbar-desktop">
+        <div class="topbar-spacer"></div>
+        <button class="notif-btn" onclick="toggleNotifications()">
+            🔔<span id="notifBadge" class="notif-badge"></span>
+        </button>
+    </div>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -66,6 +93,16 @@
 
     {% block content %}{% endblock %}
 </main>
+
+<!-- Session timeout warning -->
+<div class="timeout-modal" id="timeoutModal">
+    <div class="timeout-card">
+        <div class="timeout-icon">⏱</div>
+        <h3>Session Expiring</h3>
+        <p>You will be logged out in <strong id="timeoutCounter">60</strong> seconds due to inactivity.</p>
+        <button class="btn-orange-full" onclick="stayLoggedIn()">Stay Logged In</button>
+    </div>
+</div>
 {% else %}
 <main class="auth-content">
     {% block auth_content %}{% endblock %}
@@ -80,7 +117,9 @@
 <script src="{{ url_for('admin_portal.static', filename='js/admin.js') }}"></script>
 {% block scripts %}{% endblock %}
 
+{% if session.get('admin_id') %}
 <script>
+// Sidebar toggle
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -89,6 +128,111 @@ function toggleSidebar() {
         overlay.classList.toggle('visible');
     }
 }
+
+// Notifications
+async function loadNotifications() {
+    try {
+        const res = await api('/api/admin/notifications');
+        const badges = [
+            document.getElementById('notifBadge'),
+            document.getElementById('notifBadgeMobile'),
+        ];
+        badges.forEach(b => {
+            if (!b) return;
+            if (res.count > 0) {
+                b.textContent = res.count;
+                b.style.display = 'inline-block';
+            } else {
+                b.style.display = 'none';
+            }
+        });
+
+        const body = document.getElementById('notifBody');
+        if (res.notifications.length === 0) {
+            body.innerHTML = '<div class="empty">No new notifications</div>';
+        } else {
+            body.innerHTML = res.notifications.map(n => `
+                <a href="${n.url}" class="notif-item notif-${n.type}">
+                    <div class="notif-icon">${n.icon}</div>
+                    <div class="notif-content">
+                        <div class="notif-title">${n.title}</div>
+                        <div class="notif-sub">${n.subtitle}</div>
+                    </div>
+                </a>
+            `).join('');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function toggleNotifications() {
+    const panel = document.getElementById('notifPanel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) loadNotifications();
+}
+
+// Close notifications when clicking outside
+document.addEventListener('click', (e) => {
+    const panel = document.getElementById('notifPanel');
+    if (!panel) return;
+    if (panel.classList.contains('open') &&
+        !panel.contains(e.target) &&
+        !e.target.closest('.notif-btn') &&
+        !e.target.closest('.notif-btn-mobile')) {
+        panel.classList.remove('open');
+    }
+});
+
+// Initial load + refresh every 30s
+loadNotifications();
+setInterval(loadNotifications, 30000);
+
+// ─── SESSION TIMEOUT ─────────────────────────────
+const IDLE_LIMIT_MS = 25 * 60 * 1000;    // 25 min
+const WARNING_MS = 60 * 1000;             // 1 min warning
+let idleTimer = null;
+let warningTimer = null;
+let countdownTimer = null;
+
+function resetIdleTimer() {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (warningTimer) clearTimeout(warningTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
+    document.getElementById('timeoutModal').classList.remove('visible');
+
+    idleTimer = setTimeout(showTimeoutWarning, IDLE_LIMIT_MS);
+}
+
+function showTimeoutWarning() {
+    document.getElementById('timeoutModal').classList.add('visible');
+    let seconds = 60;
+    document.getElementById('timeoutCounter').textContent = seconds;
+
+    countdownTimer = setInterval(() => {
+        seconds--;
+        document.getElementById('timeoutCounter').textContent = seconds;
+        if (seconds <= 0) {
+            clearInterval(countdownTimer);
+            window.location.href = '/admin/logout';
+        }
+    }, 1000);
+}
+
+function stayLoggedIn() {
+    resetIdleTimer();
+}
+
+['mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+    document.addEventListener(evt, () => {
+        if (!document.getElementById('timeoutModal').classList.contains('visible')) {
+            resetIdleTimer();
+        }
+    }, { passive: true });
+});
+
+resetIdleTimer();
 </script>
+{% endif %}
 </body>
 </html>

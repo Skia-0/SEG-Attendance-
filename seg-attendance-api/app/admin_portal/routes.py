@@ -50,11 +50,17 @@ def login():
         session["admin_id"] = identity
         session["admin_name"] = admin.full_name
         session["admin_role"] = admin.role
+        session["admin_email"] = admin.email
         session["admin_token"] = access_token
 
         return redirect(url_for("admin_portal.dashboard"))
 
     return render_template("admin_login.html")
+
+
+@admin_portal_bp.route("/forgot-password")
+def forgot_password():
+    return render_template("admin_forgot_password.html")
 
 
 @admin_portal_bp.route("/logout")
@@ -84,6 +90,7 @@ def hubs():
     if redir:
         return redir
     return render_template("admin_hubs.html")
+
 
 @admin_portal_bp.route("/hubs/<hub_id>")
 def hub_detail(hub_id):
@@ -117,6 +124,17 @@ def audit_log():
     return render_template("admin_audit_log.html")
 
 
+@admin_portal_bp.route("/settings")
+def settings():
+    redir = _require_admin()
+    if redir:
+        return redir
+    return render_template("admin_settings.html")
+
+
 @admin_portal_bp.context_processor
 def inject_admin_token():
-    return {"admin_token": session.get("admin_token", "")}
+    return {
+        "admin_token": session.get("admin_token", ""),
+        "admin_email": session.get("admin_email", ""),
+    }
