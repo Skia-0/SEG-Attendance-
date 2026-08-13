@@ -83,6 +83,12 @@ def register():
             "error": "Full name, email, password and hub_id are required"
         }), 400
 
+    from app.utils import validate_length
+
+    name_err = validate_length(full_name, "Full name", 3, 100)
+    if name_err:
+        return jsonify({"error": name_err}), 400
+
     email, email_error = _validate_email(email_raw)
     if email_error:
         return jsonify({"error": email_error}), 400

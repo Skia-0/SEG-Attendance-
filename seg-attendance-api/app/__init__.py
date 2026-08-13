@@ -102,4 +102,16 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_api_bp, url_prefix="/api/admin")
     app.register_blueprint(admin_portal_bp, url_prefix="/admin")
 
+        # Global input length protection
+    @app.before_request
+    def check_input_lengths():
+        if request.is_json:
+            data = request.get_json(silent=True)
+            if data and isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and len(value) > 10000:
+                        return jsonify({
+                            "error": f"Field '{key}' exceeds maximum length"
+                        }), 400
+
     return app

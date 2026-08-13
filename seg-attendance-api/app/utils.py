@@ -1,23 +1,16 @@
-from flask import jsonify
+from flask import jsonify, request
 from flask_jwt_extended import get_jwt_identity
 
 
 def error_response(message, status_code):
-    """Returns a consistent JSON error response."""
     return jsonify({"error": message}), status_code
 
 
 def success_response(data, status_code=200):
-    """Returns a consistent JSON success response."""
     return jsonify(data), status_code
 
 
 def get_current_coordinator():
-    """
-    Fetch the Coordinator row for the current JWT identity.
-    Returns None if there's no valid identity or no matching row.
-    Import is local to avoid a circular import with app.models.
-    """
     from app.models import Coordinator
     coordinator_id = get_jwt_identity()
     if not coordinator_id:
@@ -26,13 +19,6 @@ def get_current_coordinator():
 
 
 def same_hub(coordinator, hub_id):
-    """
-    True only if coordinator belongs to the hub identified by hub_id.
-    This is the single choke point for "does this coordinator own 
-    this resource" - every route that loads a Cohort/Session/
-    Learner/NFCCard by id must resolve that resource's owning 
-    hub_id and check it here before mutating or returning it.
-    """
     if coordinator is None or hub_id is None:
         return False
     return str(coordinator.hub_id) == str(hub_id)
@@ -42,12 +28,25 @@ def forbidden(message="You do not have access to this resource"):
     return error_response(message, 403)
 
 
+def validate_length(value, field_name, min_len=1, max_len=255):
+    if not value:
+        return f"{field_name} is required"
+    if len(value) < min_len:
+        return f"{field_name} must be at least {min_len} characters"
+    if len(value) > max_len:
+        return f"{field_name} must not exceed {max_len} characters"
+    return None
+
+
+def get_client_ip():
+    """Get the real client IP, considering proxies."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr
+
+
 def log_action(coordinator, action, resource_type, resource_id,
                details=None):
-    """
-    Write an audit log entry. Never raise if audit fails - 
-    audit failure must not block the actual action.
-    """
     try:
         from app.models import AuditLog
         from app.extensions import db
@@ -59,22 +58,13 @@ def log_action(coordinator, action, resource_type, resource_id,
             resource_type=resource_type,
             resource_id=str(resource_id) if resource_id else None,
             details=details or {},
+            ip_address=get_client_ip(),
         )
         db.session.add(entry)
         db.session.commit()
     except Exception:
-        # Never let audit failure break the main action
         try:
             from app.extensions import db
             db.session.rollback()
         except Exception:
             pass
-def validate_length(value, field_name, min_len=1, max_len=255):
-    """Returns error message if invalid, None if ok."""
-    if not value:
-        return f"{field_name} is required"
-    if len(value) < min_len:
-        return f"{field_name} must be at least {min_len} characters"
-    if len(value) > max_len:
-        return f"{field_name} must not exceed {max_len} characters"
-    return None          
