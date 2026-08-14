@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Admin{% endblock %} · SEG Attendance</title>
+    <link rel="icon" type="image/png" href="{{ url_for('admin_portal.static', filename='seg_favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('admin_portal.static', filename='css/admin.css') }}">
     <script>
         // Apply theme immediately to prevent flash
@@ -130,6 +131,7 @@ function toggleSidebar() {
 }
 
 // Notifications
+// Notifications
 async function loadNotifications() {
     try {
         const res = await api('/api/admin/notifications');
@@ -149,20 +151,66 @@ async function loadNotifications() {
 
         const body = document.getElementById('notifBody');
         if (res.notifications.length === 0) {
-            body.innerHTML = '<div class="empty">No new notifications</div>';
+            body.innerHTML = '<div class="empty">No notifications</div>';
         } else {
-            body.innerHTML = res.notifications.map(n => `
-                <a href="${n.url}" class="notif-item notif-${n.type}">
-                    <div class="notif-icon">${n.icon}</div>
-                    <div class="notif-content">
-                        <div class="notif-title">${n.title}</div>
-                        <div class="notif-sub">${n.subtitle}</div>
-                    </div>
-                </a>
-            `).join('');
+            // Group by category
+            const categories = {};
+            res.notifications.forEach(n => {
+                if (!categories[n.category]) categories[n.category] = [];
+                categories[n.category].push(n);
+            });
+
+            let html = '';
+
+            // Mark all as read button
+            if (res.count > 0) {
+                html += `<div class="notif-actions">
+                    <button class="notif-mark-all" onclick="markAllRead()">
+                        Mark all as read
+                    </button>
+                </div>`;
+            }
+
+            res.notifications.forEach(n => {
+                const readClass = n.is_read ? 'notif-read' : '';
+                const timeAgo = formatTime(n.created_at);
+                html += `
+                    <a href="${n.url}" class="notif-item notif-${n.category} ${readClass}"
+                       onclick="markRead('${n.notification_id}')">
+                        <div class="notif-icon">${n.icon}</div>
+                        <div class="notif-content">
+                            <div class="notif-title">${n.title}</div>
+                            <div class="notif-sub">${n.subtitle}</div>
+                            <div class="notif-time">${timeAgo}</div>
+                        </div>
+                        ${!n.is_read ? '<div class="notif-dot"></div>' : ''}
+                    </a>
+                `;
+            });
+
+            body.innerHTML = html;
         }
     } catch (e) {
         console.error(e);
+    }
+}
+
+async function markRead(id) {
+    try {
+        await api(`/api/admin/notifications/${id}/read`, 'POST');
+        loadNotifications();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function markAllRead() {
+    try {
+        await api('/api/admin/notifications/read-all', 'POST');
+        loadNotifications();
+        showSuccess('All notifications marked as read');
+    } catch (e) {
+        showError('Failed to mark as read');
     }
 }
 

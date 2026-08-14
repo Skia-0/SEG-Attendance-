@@ -1,3 +1,4 @@
+import re
 from flask import jsonify, request
 from flask_jwt_extended import get_jwt_identity
 
@@ -38,8 +39,30 @@ def validate_length(value, field_name, min_len=1, max_len=255):
     return None
 
 
+def validate_phone(phone):
+    """
+    Validate phone number — must be exactly 10 digits.
+    Returns (cleaned_phone, None) if valid.
+    Returns (None, error_message) if invalid.
+    """
+    if not phone:
+        return None, None  # phone is optional
+
+    # Remove spaces, dashes, plus sign
+    cleaned = re.sub(r'[\s\-\+\(\)]', '', phone.strip())
+
+    # Remove leading country code if present (e.g. 233)
+    if cleaned.startswith('233') and len(cleaned) == 12:
+        cleaned = '0' + cleaned[3:]
+
+    # Must be exactly 10 digits
+    if not re.match(r'^\d{10}$', cleaned):
+        return None, "Phone number must be exactly 10 digits (e.g. 0244123456)"
+
+    return cleaned, None
+
+
 def get_client_ip():
-    """Get the real client IP, considering proxies."""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr

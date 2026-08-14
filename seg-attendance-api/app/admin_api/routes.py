@@ -11,7 +11,7 @@ from flask_jwt_extended import (
 from app.models import (
     Admin, Hub, Cohort, Coordinator, Learner,
     Session as HubSession, AttendanceRecord, Report, AuditLog,
-    EmailVerification,
+    EmailVerification, AdminNotification,
 )
 from app.extensions import db, limiter
 from app.services.email_service import EmailService
@@ -231,70 +231,173 @@ def admin_change_password():
 @admin_api_bp.route("/notifications", methods=["GET"])
 @admin_required
 def get_notifications():
-    """Real-time-ish notification data for the bell icon."""
+    admin = get_current_admin()
     now = datetime.utcnow()
     day_ago = now - timedelta(hours=24)
 
-    # Recent reports (last 24h)
+    _generate_notifications(admin, now, day_ago)
+
+    category = request.args.get("category")
+
+    query = AdminNotification.query.filter(
+        db.or_(
+            AdminNotification.admin_id == admin.admin_id,
+            AdminNotification.admin_id.is_(None),
+        )
+    )
+
+    if category:
+        query = query.filter_by(category=category)
+
+    notifications = query.order_by(
+        AdminNotification.is_read.asc(),
+        AdminNotification.created_at.desc(),
+    ).limit(50).all()
+
+    unread_count = AdminNotification.query.filter(
+        db.or_(
+            AdminNotification.admin_id == admin.admin_id,
+            AdminNotification.admin_id.is_(None),
+        ),
+        AdminNotification.is_read == False,
+    ).count()
+
+    return jsonify({
+        "count": unread_count,
+        "notifications": [n.to_dict() for n in notifications],
+    }), 200
+
+
+@admin_api_bp.route(
+    "/notifications/<notification_id>/read", methods=["POST"]
+)
+@admin_required
+def mark_notification_read(notification_id):
+    notif = AdminNotification.query.get(notification_id)
+    if not notif:
+        return jsonify({"error": "Not found"}), 404
+
+    notif.is_read = True
+    db.session.commit()
+
+    return jsonify({"message": "Marked as read"}), 200
+
+
+@admin_api_bp.route("/notifications/read-all", methods=["POST"])
+@admin_required
+def mark_all_notifications_read():
+    admin = get_current_admin()
+    AdminNotification.query.filter(
+        db.or_(
+            AdminNotification.admin_id == admin.admin_id,
+            AdminNotification.admin_id.is_(None),
+        ),
+        AdminNotification.is_read == False,
+    ).update({"is_read": True}, synchronize_session=False)
+    db.session.commit()
+
+    return jsonify({"message": "All marked as read"}), 200
+
+
+def _generate_notifications(admin, now, day_ago):
+    two_days_ago = now - timedelta(hours=48)
+    AdminNotification.query.filter(
+        AdminNotification.created_at < two_days_ago,
+        AdminNotification.is_read == True,
+    ).delete(synchronize_session=False)
+    db.session.commit()
+
     recent_reports = Report.query.filter(
         Report.submitted_at >= day_ago
     ).count()
 
-    # Currently locked coordinators
+    if recent_reports > 0:
+        _upsert_notif(
+            category="report",
+            title=f"{recent_reports} new report(s)",
+            subtitle="Submitted in the last 24 hours",
+            icon="📄",
+            url="/admin/reports",
+        )
+
     locked_coords = Coordinator.query.filter(
         Coordinator.locked_until.isnot(None),
         Coordinator.locked_until > now,
     ).count()
 
-    # Unverified coordinators
+    if locked_coords > 0:
+        _upsert_notif(
+            category="security",
+            title=f"{locked_coords} locked account(s)",
+            subtitle="Coordinators locked out",
+            icon="🔒",
+            url="/admin/coordinators",
+        )
+
     unverified = Coordinator.query.filter_by(
         email_verified=False
     ).count()
 
-    # Recent failed logins
+    if unverified > 0:
+        _upsert_notif(
+            category="coordinator",
+            title=f"{unverified} unverified account(s)",
+            subtitle="Awaiting email verification",
+            icon="✉️",
+            url="/admin/coordinators",
+        )
+
     failed_logins = AuditLog.query.filter(
         AuditLog.action == "coordinator.login_failed",
         AuditLog.created_at >= day_ago,
     ).count()
 
-    notifications = []
-    if recent_reports > 0:
-        notifications.append({
-            "type": "info",
-            "icon": "📄",
-            "title": f"{recent_reports} new report(s)",
-            "subtitle": "Submitted in the last 24 hours",
-            "url": "/admin/reports",
-        })
-    if locked_coords > 0:
-        notifications.append({
-            "type": "warning",
-            "icon": "🔒",
-            "title": f"{locked_coords} locked account(s)",
-            "subtitle": "Coordinators locked out",
-            "url": "/admin/coordinators",
-        })
-    if unverified > 0:
-        notifications.append({
-            "type": "info",
-            "icon": "✉️",
-            "title": f"{unverified} unverified account(s)",
-            "subtitle": "Awaiting email verification",
-            "url": "/admin/coordinators",
-        })
     if failed_logins > 5:
-        notifications.append({
-            "type": "warning",
-            "icon": "⚠️",
-            "title": f"{failed_logins} failed login attempts",
-            "subtitle": "In the last 24 hours",
-            "url": "/admin/audit-log",
-        })
+        _upsert_notif(
+            category="security",
+            title=f"{failed_logins} failed login attempts",
+            subtitle="In the last 24 hours",
+            icon="⚠️",
+            url="/admin/audit-log",
+        )
 
-    return jsonify({
-        "count": len(notifications),
-        "notifications": notifications,
-    }), 200
+    active_sessions = HubSession.query.filter_by(
+        ended_at=None
+    ).count()
+
+    if active_sessions > 0:
+        _upsert_notif(
+            category="system",
+            title=f"{active_sessions} active session(s)",
+            subtitle="Sessions currently running across hubs",
+            icon="🟢",
+            url="/admin/hubs",
+        )
+
+
+def _upsert_notif(category, title, subtitle, icon, url):
+    existing = AdminNotification.query.filter_by(
+        category=category,
+        is_read=False,
+        admin_id=None,
+    ).first()
+
+    if existing:
+        existing.title = title
+        existing.subtitle = subtitle
+        existing.created_at = datetime.utcnow()
+        db.session.commit()
+    else:
+        notif = AdminNotification(
+            admin_id=None,
+            category=category,
+            title=title,
+            subtitle=subtitle,
+            icon=icon,
+            url=url,
+        )
+        db.session.add(notif)
+        db.session.commit()
 
 
 # ─── OVERVIEW ─────────────────────────────────────────
@@ -403,8 +506,8 @@ def get_hub_detail(hub_id):
             ld["actor_name"] = coord.full_name if coord else "Unknown"
             ld["actor_type"] = "coordinator"
         elif log.admin_id:
-            admin = Admin.query.get(log.admin_id)
-            ld["actor_name"] = admin.full_name if admin else "Unknown"
+            admin_user = Admin.query.get(log.admin_id)
+            ld["actor_name"] = admin_user.full_name if admin_user else "Unknown"
             ld["actor_type"] = "admin"
         else:
             ld["actor_name"] = "System"
@@ -687,8 +790,8 @@ def hub_wide_audit_log():
             data["actor_name"] = coord.full_name if coord else "Unknown"
             data["actor_type"] = "coordinator"
         elif log.admin_id:
-            admin = Admin.query.get(log.admin_id)
-            data["actor_name"] = admin.full_name if admin else "Unknown"
+            admin_user = Admin.query.get(log.admin_id)
+            data["actor_name"] = admin_user.full_name if admin_user else "Unknown"
             data["actor_type"] = "admin"
         else:
             data["actor_name"] = "System"

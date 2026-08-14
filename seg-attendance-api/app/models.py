@@ -589,3 +589,49 @@ class AuditLog(db.Model):
                 self.created_at.isoformat()
                 if self.created_at else None,
         }
+        
+class AdminNotification(db.Model):
+    __tablename__ = "admin_notifications"
+
+    notification_id = db.Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=db.text("gen_random_uuid()")
+    )
+    admin_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("admins.admin_id", ondelete="CASCADE"),
+        nullable=True
+    )  # null = broadcast to all admins
+    category = db.Column(
+        db.String(30), nullable=False
+    )  # report, security, system, coordinator
+    title = db.Column(db.String(255), nullable=False)
+    subtitle = db.Column(db.String(255), nullable=True)
+    icon = db.Column(db.String(10), nullable=True)
+    url = db.Column(db.String(255), nullable=True)
+    is_read = db.Column(
+        db.Boolean, default=False, nullable=False,
+        server_default="false"
+    )
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        server_default=db.text("NOW()")
+    )
+
+    def to_dict(self):
+        return {
+            "notification_id": str(self.notification_id),
+            "admin_id":
+                str(self.admin_id) if self.admin_id else None,
+            "category": self.category,
+            "title": self.title,
+            "subtitle": self.subtitle,
+            "icon": self.icon,
+            "url": self.url,
+            "is_read": self.is_read,
+            "created_at":
+                self.created_at.isoformat()
+                if self.created_at else None,
+        }

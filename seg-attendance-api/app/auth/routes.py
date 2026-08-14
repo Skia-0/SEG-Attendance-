@@ -484,8 +484,15 @@ def update_me():
         coordinator.full_name = name
 
     if "phone" in data:
-        phone = (data.get("phone") or "").strip() or None
-        coordinator.phone = phone
+     raw_phone = (data.get("phone") or "").strip()
+     if raw_phone:
+        from app.utils import validate_phone
+        cleaned, phone_err = validate_phone(raw_phone)
+        if phone_err:
+            return jsonify({"error": phone_err}), 400
+        coordinator.phone = cleaned
+    else:
+        coordinator.phone = None
 
     db.session.commit()
 

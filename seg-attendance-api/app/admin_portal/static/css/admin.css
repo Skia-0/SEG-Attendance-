@@ -1010,3 +1010,65 @@ body {
         display: none !important;
     }
 }
+
+/* ─── NOTIFICATION ENHANCEMENTS ─── */
+.notif-actions {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--divider);
+    text-align: right;
+}
+
+.notif-mark-all {
+    background: none;
+    border: none;
+    color: var(--orange);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.notif-mark-all:hover {
+    background: var(--orange-light);
+}
+
+.notif-item.notif-read {
+    opacity: 0.6;
+}
+
+.notif-item.notif-read:hover {
+    opacity: 1;
+}
+
+.notif-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--orange);
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.notif-time {
+    font-size: 10px;
+    color: var(--text-light);
+    margin-top: 4px;
+}
+
+.notif-item.notif-security {
+    border-left: 3px solid #F59E0B;
+}
+
+.notif-item.notif-report {
+    border-left: 3px solid #3B82F6;
+}
+
+.notif-item.notif-coordinator {
+    border-left: 3px solid #8B5CF6;
+}
+
+.notif-item.notif-system {
+    border-left: 3px solid #10B981;
+}

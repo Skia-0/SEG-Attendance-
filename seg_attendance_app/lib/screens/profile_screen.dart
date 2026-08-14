@@ -92,60 +92,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _editPhone() async {
-    final controller =
-        TextEditingController(text: _me?.phone ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Edit Recovery Phone'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
-            labelText: 'Phone Number',
-            hintText: '024XXXXXXX',
+  final controller =
+      TextEditingController(text: _me?.phone ?? '');
+  final result = await showDialog<String>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Edit Recovery Phone'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: controller,
+            keyboardType: TextInputType.phone,
+            maxLength: 10,
+            decoration: const InputDecoration(
+              labelText: 'Phone Number',
+              hintText: '0244123456',
+              counterText: '',
+              helperText: 'Must be exactly 10 digits',
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () =>
-                Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save'),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 14, color: Colors.blue),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'This phone can be used for account '
+                    'recovery via SMS in the future.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF444444),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final phone = controller.text.trim();
+            if (phone.isNotEmpty && phone.length != 10) return;
+            Navigator.pop(context, phone);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
 
-    if (result == null) return;
+  if (result == null) return;
 
-    try {
-      await _api.updateMe(phone: result);
-      _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Phone updated'),
-            backgroundColor: Color(0xFFFF6B00),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to update phone'),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+  try {
+    await _api.updateMe(phone: result);
+    _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Phone updated'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      String msg = 'Failed to update phone';
+      try {
+        final resp = (e as dynamic).response;
+        final err = resp?.data?['error'];
+        if (err != null) msg = err.toString();
+      } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
+}
 
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
