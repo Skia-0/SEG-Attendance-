@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from app.models import Session, Cohort, AttendanceRecord
+from app.models import Session, Cohort, AttendanceRecord, Hub
 from app.extensions import db
 from app.utils import (
     get_current_coordinator,
@@ -58,7 +58,6 @@ def create_session():
             "Not authorized to create a session for this cohort"
         )
 
-    # Fix 1: Prevent duplicate session titles in same cohort
     existing_title = Session.query.filter_by(
         cohort_id=cohort.cohort_id,
         title=title
@@ -68,7 +67,6 @@ def create_session():
             "error": "A session with this title already exists in this cohort"
         }), 409
 
-    # Fix 2: Only one active session per cohort
     active_session = Session.query.filter_by(
         cohort_id=cohort.cohort_id,
         ended_at=None
@@ -97,6 +95,19 @@ def create_session():
 
     log_action(coordinator, "session.created", "session",
                session.session_id, {"title": title})
+
+    # Notify admins
+    try:
+        from app.services.notification_service import NotificationService
+        hub = Hub.query.get(cohort.hub_id)
+        NotificationService.session_started(
+            session_title=title,
+            cohort_name=cohort.name,
+            hub_name=hub.name if hub else "",
+            coordinator_name=coordinator.full_name,
+        )
+    except Exception:
+        pass
 
     return jsonify(session.to_dict()), 201
 
@@ -182,7 +193,6 @@ def update_checkin_state(session_id):
 
     is_open = bool(open_state)
 
-    # Fix 3: Auto-close check-in/out on other sessions in same cohort
     if is_open:
         other_sessions = Session.query.filter(
             Session.cohort_id == session.cohort_id,
@@ -232,7 +242,6 @@ def update_checkout_state(session_id):
 
     is_open = bool(open_state)
 
-    # Fix 3: Auto-close check-in/out on other sessions in same cohort
     if is_open:
         other_sessions = Session.query.filter(
             Session.cohort_id == session.cohort_id,
@@ -274,7 +283,6 @@ def end_session(session_id):
             "error": "Session has already ended"
         }), 400
 
-    # Fix 4: Check if there are pending learners (checked in, not out)
     pending_count = AttendanceRecord.query.filter_by(
         session_id=session.session_id,
         checked_out_at=None
@@ -297,6 +305,9 @@ def end_session(session_id):
     session.checkin_open = False
     session.checkout_open = False
 
+    if reason:
+        session.end_reason = reason
+
     db.session.commit()
 
     log_details = {"pending_learners": pending_count}
@@ -305,5 +316,27 @@ def end_session(session_id):
 
     log_action(coordinator, "session.ended", "session",
                session.session_id, log_details)
+
+    # Notify admins
+    try:
+        from app.services.notification_service import NotificationService
+        cohort = Cohort.query.get(session.cohort_id)
+        hub = Hub.query.get(cohort.hub_id) if cohort else None
+        attended = AttendanceRecord.query.filter_by(
+            session_id=session.session_id,
+            is_complete=True
+        ).count()
+        total = AttendanceRecord.query.filter_by(
+            session_id=session.session_id
+        ).count()
+        NotificationService.session_ended(
+            session_title=session.title,
+            cohort_name=cohort.name if cohort else "",
+            hub_name=hub.name if hub else "",
+            attended_count=attended,
+            total_count=total,
+        )
+    except Exception:
+        pass
 
     return jsonify(session.to_dict()), 200

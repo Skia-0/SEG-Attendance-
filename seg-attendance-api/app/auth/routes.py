@@ -315,6 +315,16 @@ def login():
             )
             db.session.commit()
 
+            try:
+                from app.services.notification_service import NotificationService
+                hub = Hub.query.get(coordinator.hub_id)
+                NotificationService.coordinator_locked(
+                    coordinator.full_name,
+                    hub.name if hub else "",
+                )
+            except Exception:
+                pass
+
             _log_failed_login(email,
                               f"locked_after_{coordinator.failed_login_attempts}_attempts")
 

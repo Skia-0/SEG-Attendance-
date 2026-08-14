@@ -8,6 +8,8 @@ from app.models import (
     Learner,
     AttendanceRecord,
     AuditLog,
+    Hub,
+    Coordinator,
 )
 from app.utils import (
     get_current_coordinator,
@@ -139,16 +141,14 @@ def submit_session_report(session_id):
             "error": "Session must be ended before submitting"
         }), 400
 
-    # Warn if 0 attendance and no confirmation
-   
-
     existing = Report.query.filter_by(
         session_id=session.session_id,
         report_type="session"
     ).first()
     if existing:
         return jsonify({
-            "error": "Session report already submitted",
+            "error": "Session report already submitted. "
+                     "Contact your admin if it needs correction.",
             "report_id": str(existing.report_id)
         }), 409
 
@@ -168,6 +168,19 @@ def submit_session_report(session_id):
 
     log_action(coordinator, "report.session_submitted", "report",
                report.report_id, {"session_id": str(session_id)})
+
+    # Notify admins
+    try:
+        from app.services.notification_service import NotificationService
+        hub = Hub.query.get(cohort.hub_id)
+        NotificationService.report_submitted(
+            report_type="session",
+            title=report_data.get("session_title", "Session"),
+            hub_name=hub.name if hub else "",
+            coordinator_name=coordinator.full_name,
+        )
+    except Exception:
+        pass
 
     return jsonify(report.to_dict()), 201
 
@@ -196,7 +209,8 @@ def submit_cohort_final_report(cohort_id):
     ).first()
     if existing:
         return jsonify({
-            "error": "Final report already submitted",
+            "error": "Final report already submitted. "
+                     "Contact your admin if it needs correction.",
             "report_id": str(existing.report_id)
         }), 409
 
@@ -217,6 +231,19 @@ def submit_cohort_final_report(cohort_id):
     log_action(coordinator, "report.cohort_final_submitted",
                "report", report.report_id,
                {"cohort_id": str(cohort_id)})
+
+    # Notify admins
+    try:
+        from app.services.notification_service import NotificationService
+        hub = Hub.query.get(cohort.hub_id)
+        NotificationService.report_submitted(
+            report_type="cohort_final",
+            title=data.get("cohort_name", "Cohort"),
+            hub_name=hub.name if hub else "",
+            coordinator_name=coordinator.full_name,
+        )
+    except Exception:
+        pass
 
     return jsonify(report.to_dict()), 201
 

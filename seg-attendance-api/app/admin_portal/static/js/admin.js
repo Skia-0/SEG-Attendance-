@@ -50,6 +50,20 @@ function formatTime(iso) {
     if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
     return formatDate(iso);
 }
+function formatActualDateTime(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    var day = d.getDate();
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var month = months[d.getMonth()];
+    var year = d.getFullYear();
+    var hours = d.getHours();
+    var mins = d.getMinutes();
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    return day + ' ' + month + ' ' + year + '  ' + (hours < 10 ? '0' : '') + hours + ':' + (mins < 10 ? '0' : '') + mins + ' ' + ampm;
+}
 
 function formatAction(action) {
     return action.replace(/_/g, ' ').replace(/\./g, ' → ');

@@ -86,7 +86,7 @@ async function loadReports() {
                             <span>·</span>
                             <span>${escapeHtml(r.cohort_name)}</span>
                             <span>·</span>
-                            <span>${formatDate(r.submitted_at)}</span>
+                            <span>${formatActualDateTime(r.submitted_at)}</span>
                         </div>
                     </div>
                     <div class="report-stats">${stats}</div>
@@ -113,7 +113,6 @@ async function viewReport(id) {
         document.getElementById('modalBody').innerHTML =
             renderReportDetail(r);
 
-        // Wire up download buttons
         document.getElementById('downloadPdfBtn').onclick = () =>
             downloadReport(id, 'pdf');
         document.getElementById('downloadCsvBtn').onclick = () =>
@@ -139,9 +138,9 @@ function renderReportDetail(r) {
                     <div><label>Hub</label><span>${escapeHtml(r.hub_name)}</span></div>
                     <div><label>Cohort</label><span>${escapeHtml(r.cohort_name)}</span></div>
                     <div><label>Session</label><span>${escapeHtml(data.session_title || '—')}</span></div>
-                    <div><label>Started</label><span>${formatDate(data.started_at)}</span></div>
-                    <div><label>Ended</label><span>${formatDate(data.ended_at)}</span></div>
-                    <div><label>Submitted</label><span>${formatDate(r.submitted_at)}</span></div>
+                    <div><label>Started</label><span>${formatActualDateTime(data.started_at)}</span></div>
+                    <div><label>Ended</label><span>${formatActualDateTime(data.ended_at)}</span></div>
+                    <div><label>Submitted</label><span>${formatActualDateTime(r.submitted_at)}</span></div>
                 </div>
             </div>
 
@@ -187,8 +186,8 @@ function renderReportDetail(r) {
                                 <tr>
                                     <td class="mono">${escapeHtml(a.seg_id || '—')}</td>
                                     <td>${escapeHtml(a.full_name || '—')}</td>
-                                    <td>${a.checked_in_at ? formatTime(a.checked_in_at) : '—'}</td>
-                                    <td>${a.checked_out_at ? formatTime(a.checked_out_at) : '—'}</td>
+                                    <td>${a.checked_in_at ? formatActualDateTime(a.checked_in_at) : '—'}</td>
+                                    <td>${a.checked_out_at ? formatActualDateTime(a.checked_out_at) : '—'}</td>
                                     <td>${escapeHtml(a.verification_method || '—')}</td>
                                     <td>${status}</td>
                                 </tr>
@@ -211,7 +210,7 @@ function renderReportDetail(r) {
                     <div><label>Cohort</label><span>${escapeHtml(data.cohort_name || '—')}</span></div>
                     <div><label>Threshold</label><span>${data.min_attendance_percent || 0}%</span></div>
                     <div><label>Total Sessions</label><span>${data.total_sessions || 0}</span></div>
-                    <div><label>Submitted</label><span>${formatDate(r.submitted_at)}</span></div>
+                    <div><label>Submitted</label><span>${formatActualDateTime(r.submitted_at)}</span></div>
                 </div>
             </div>
 

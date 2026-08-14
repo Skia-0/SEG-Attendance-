@@ -232,10 +232,14 @@ def admin_change_password():
 @admin_required
 def get_notifications():
     admin = get_current_admin()
-    now = datetime.utcnow()
-    day_ago = now - timedelta(hours=24)
 
-    _generate_notifications(admin, now, day_ago)
+    # Clean old read notifications (older than 30 days)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    AdminNotification.query.filter(
+        AdminNotification.created_at < thirty_days_ago,
+        AdminNotification.is_read == True,
+    ).delete(synchronize_session=False)
+    db.session.commit()
 
     category = request.args.get("category")
 
@@ -250,9 +254,8 @@ def get_notifications():
         query = query.filter_by(category=category)
 
     notifications = query.order_by(
-        AdminNotification.is_read.asc(),
         AdminNotification.created_at.desc(),
-    ).limit(50).all()
+    ).limit(100).all()
 
     unread_count = AdminNotification.query.filter(
         db.or_(
@@ -297,107 +300,6 @@ def mark_all_notifications_read():
     db.session.commit()
 
     return jsonify({"message": "All marked as read"}), 200
-
-
-def _generate_notifications(admin, now, day_ago):
-    two_days_ago = now - timedelta(hours=48)
-    AdminNotification.query.filter(
-        AdminNotification.created_at < two_days_ago,
-        AdminNotification.is_read == True,
-    ).delete(synchronize_session=False)
-    db.session.commit()
-
-    recent_reports = Report.query.filter(
-        Report.submitted_at >= day_ago
-    ).count()
-
-    if recent_reports > 0:
-        _upsert_notif(
-            category="report",
-            title=f"{recent_reports} new report(s)",
-            subtitle="Submitted in the last 24 hours",
-            icon="📄",
-            url="/admin/reports",
-        )
-
-    locked_coords = Coordinator.query.filter(
-        Coordinator.locked_until.isnot(None),
-        Coordinator.locked_until > now,
-    ).count()
-
-    if locked_coords > 0:
-        _upsert_notif(
-            category="security",
-            title=f"{locked_coords} locked account(s)",
-            subtitle="Coordinators locked out",
-            icon="🔒",
-            url="/admin/coordinators",
-        )
-
-    unverified = Coordinator.query.filter_by(
-        email_verified=False
-    ).count()
-
-    if unverified > 0:
-        _upsert_notif(
-            category="coordinator",
-            title=f"{unverified} unverified account(s)",
-            subtitle="Awaiting email verification",
-            icon="✉️",
-            url="/admin/coordinators",
-        )
-
-    failed_logins = AuditLog.query.filter(
-        AuditLog.action == "coordinator.login_failed",
-        AuditLog.created_at >= day_ago,
-    ).count()
-
-    if failed_logins > 5:
-        _upsert_notif(
-            category="security",
-            title=f"{failed_logins} failed login attempts",
-            subtitle="In the last 24 hours",
-            icon="⚠️",
-            url="/admin/audit-log",
-        )
-
-    active_sessions = HubSession.query.filter_by(
-        ended_at=None
-    ).count()
-
-    if active_sessions > 0:
-        _upsert_notif(
-            category="system",
-            title=f"{active_sessions} active session(s)",
-            subtitle="Sessions currently running across hubs",
-            icon="🟢",
-            url="/admin/hubs",
-        )
-
-
-def _upsert_notif(category, title, subtitle, icon, url):
-    existing = AdminNotification.query.filter_by(
-        category=category,
-        is_read=False,
-        admin_id=None,
-    ).first()
-
-    if existing:
-        existing.title = title
-        existing.subtitle = subtitle
-        existing.created_at = datetime.utcnow()
-        db.session.commit()
-    else:
-        notif = AdminNotification(
-            admin_id=None,
-            category=category,
-            title=title,
-            subtitle=subtitle,
-            icon=icon,
-            url=url,
-        )
-        db.session.add(notif)
-        db.session.commit()
 
 
 # ─── OVERVIEW ─────────────────────────────────────────

@@ -1011,11 +1011,11 @@ body {
     }
 }
 
-/* ─── NOTIFICATION ENHANCEMENTS ─── */
+/* ─── NOTIFICATIONS (Banking App Style) ─── */
 .notif-actions {
     padding: 8px 16px;
-    border-bottom: 1px solid var(--divider);
     text-align: right;
+    border-bottom: 1px solid var(--divider);
 }
 
 .notif-mark-all {
@@ -1027,19 +1027,98 @@ body {
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 4px;
-    transition: background 0.15s;
 }
 
 .notif-mark-all:hover {
     background: var(--orange-light);
 }
 
+.notif-date-label {
+    padding: 10px 16px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-light);
+    background: var(--hover);
+    border-bottom: 1px solid var(--divider);
+}
+
+.notif-item {
+    display: flex;
+    padding: 14px 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--divider);
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.15s;
+    align-items: flex-start;
+}
+
+.notif-item:hover {
+    background: var(--hover);
+}
+
+.notif-item:last-child {
+    border-bottom: none;
+}
+
 .notif-item.notif-read {
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
 .notif-item.notif-read:hover {
-    opacity: 1;
+    opacity: 0.8;
+}
+
+.notif-icon-wrap {
+    flex-shrink: 0;
+}
+
+.notif-icon-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: var(--hover);
+}
+
+.notif-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notif-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+}
+
+.notif-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.notif-meta {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.notif-actual-time {
+    font-size: 11px;
+    color: var(--text-light);
+    white-space: nowrap;
 }
 
 .notif-dot {
@@ -1047,22 +1126,14 @@ body {
     height: 8px;
     border-radius: 50%;
     background: var(--orange);
-    flex-shrink: 0;
-    align-self: center;
-}
-
-.notif-time {
-    font-size: 10px;
-    color: var(--text-light);
-    margin-top: 4px;
-}
-
-.notif-item.notif-security {
-    border-left: 3px solid #F59E0B;
 }
 
 .notif-item.notif-report {
     border-left: 3px solid #3B82F6;
+}
+
+.notif-item.notif-security {
+    border-left: 3px solid #F59E0B;
 }
 
 .notif-item.notif-coordinator {
