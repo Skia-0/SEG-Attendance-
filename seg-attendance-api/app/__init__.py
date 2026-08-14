@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from app.extensions import db, migrate, jwt, cors, limiter
 from config import Config
 
