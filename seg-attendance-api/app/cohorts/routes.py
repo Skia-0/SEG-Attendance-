@@ -116,7 +116,8 @@ def list_my_cohorts():
         return jsonify({"error": "Coordinator not found"}), 404
 
     cohorts = Cohort.query.filter_by(
-        hub_id=coordinator.hub_id
+        hub_id=coordinator.hub_id,
+        is_deleted=False 
     ).order_by(Cohort.created_at.desc()).all()
 
     results = []
@@ -317,7 +318,8 @@ def delete_cohort(cohort_id):
         return forbidden("Not authorized to delete this cohort")
 
     cohort_name = cohort.name
-    db.session.delete(cohort)
+    cohort.is_deleted = True
+    cohort.deleted_at = datetime.utcnow
     db.session.commit()
 
     log_action(coordinator, "cohort.deleted", "cohort",

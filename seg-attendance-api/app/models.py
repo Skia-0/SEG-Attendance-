@@ -65,6 +65,12 @@ class Cohort(db.Model):
         server_default=db.text("NOW()")
     )
 
+    is_deleted = db.Column(
+        db.Boolean, default=False, nullable=False,
+        server_default="false"
+    )
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
     hub = db.relationship("Hub", back_populates="cohorts")
     learners = db.relationship(
         "Learner", back_populates="cohort",
