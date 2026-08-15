@@ -10,5 +10,4 @@ python-dotenv==1.0.1
 flask-limiter==3.8.0
 sendgrid==6.11.0
 reportlab==4.2.5
-pip install 
 flask-wtf==1.2.2
