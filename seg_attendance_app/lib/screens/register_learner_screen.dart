@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/nfc_service.dart';
 import '../services/biometric_service.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class RegisterLearnerScreen extends StatefulWidget {
   final String cohortId;
@@ -31,6 +33,8 @@ class _RegisterLearnerScreenState
   String? _nfcUid;
   bool _fingerprintEnrolled = false;
   bool _loading = false;
+  File? _photo;
+  final _picker = ImagePicker();
 
   @override
   void dispose() {
@@ -117,6 +121,35 @@ class _RegisterLearnerScreenState
       ),
     );
   }
+  
+  Future<void> _takePhoto() async {
+  try {
+    final image = await _picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
+    if (image != null) {
+      setState(() => _photo = File(image.path));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo captured'),
+          backgroundColor: Color(0xFFFF6B00),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Camera error: ${e.toString()}'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
 
   Future<void> _register({bool confirmDuplicate = false}) async {
     if (!_formKey.currentState!.validate()) return;
@@ -320,13 +353,14 @@ class _RegisterLearnerScreenState
   }
 
   void _resetForm() {
-    _nameController.clear();
-    _phoneController.clear();
-    setState(() {
-      _nfcUid = null;
-      _fingerprintEnrolled = false;
-    });
-  }
+  _nameController.clear();
+  _phoneController.clear();
+  setState(() {
+    _nfcUid = null;
+    _fingerprintEnrolled = false;
+    _photo = null;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +472,31 @@ class _RegisterLearnerScreenState
                   done: _fingerprintEnrolled,
                   onTap: _enrollFingerprint,
                 ),
+
+                const SizedBox(height: 10),
+
+                _MethodTile(
+                  icon: Icons.camera_alt_outlined,
+                  title: 'Photo',
+                  subtitle: _photo != null
+                      ? 'Photo captured'
+                      : 'Tap to take photo (optional)',
+                  done: _photo != null,
+                  onTap: _takePhoto,
+                ),
+
+                if (_photo != null) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(
+                      _photo!,
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 40),
 
