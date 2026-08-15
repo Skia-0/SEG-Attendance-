@@ -107,6 +107,12 @@ def coordinators():
         return redir
     return render_template("admin_coordinators.html")
 
+@admin_portal_bp.route("/coordinators/<coordinator_id>")
+def coordinator_detail(coordinator_id):
+    redir = _require_admin()
+    if redir:
+        return redir
+    return render_template("admin_coordinator_detail.html")
 
 @admin_portal_bp.route("/reports")
 def reports():

@@ -434,6 +434,150 @@ def get_hub_detail(hub_id):
     return jsonify(data), 200
 
 
+@admin_api_bp.route("/coordinators/<coordinator_id>", methods=["GET"])
+@admin_required
+def get_coordinator_detail(coordinator_id):
+    coord = Coordinator.query.get(coordinator_id)
+    if not coord:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    hub = Hub.query.get(coord.hub_id)
+    data = coord.to_dict()
+    data["hub_name"] = hub.name if hub else ""
+    data["hub_location"] = hub.location if hub else ""
+    data["is_locked"] = (
+        coord.locked_until is not None
+        and coord.locked_until > datetime.utcnow()
+    )
+
+    # Cohort stats
+    cohorts = Cohort.query.filter_by(hub_id=coord.hub_id).all()
+    data["cohort_count"] = len(cohorts)
+
+    # Session stats
+    sessions = HubSession.query.filter_by(
+        coordinator_id=coord.coordinator_id
+    ).order_by(HubSession.started_at.desc()).all()
+    data["session_count"] = len(sessions)
+    data["active_sessions"] = sum(
+        1 for s in sessions if s.ended_at is None
+    )
+
+    data["recent_sessions"] = []
+    for s in sessions[:10]:
+        sd = s.to_dict()
+        cohort = Cohort.query.get(s.cohort_id)
+        sd["cohort_name"] = cohort.name if cohort else ""
+        sd["attendance_count"] = AttendanceRecord.query.filter_by(
+            session_id=s.session_id,
+            is_complete=True
+        ).count()
+        data["recent_sessions"].append(sd)
+
+    # Recent activity
+    logs = AuditLog.query.filter_by(
+        coordinator_id=coord.coordinator_id
+    ).order_by(
+        AuditLog.created_at.desc()
+    ).limit(20).all()
+
+    data["recent_activity"] = []
+    for log in logs:
+        ld = log.to_dict()
+        ld["actor_name"] = coord.full_name
+        ld["actor_type"] = "coordinator"
+        data["recent_activity"].append(ld)
+
+    # Reports submitted
+    reports = Report.query.filter_by(
+        coordinator_id=coord.coordinator_id
+    ).order_by(Report.submitted_at.desc()).all()
+    data["report_count"] = len(reports)
+
+    # All hubs (for transfer dropdown)
+    all_hubs = Hub.query.order_by(Hub.name).all()
+    data["all_hubs"] = [h.to_dict() for h in all_hubs]
+
+    return jsonify(data), 200
+
+
+# ─── SEARCH ───────────────────────────────────────────
+@admin_api_bp.route("/search", methods=["GET"])
+@admin_required
+def global_search():
+    q = (request.args.get("q") or "").strip().lower()
+    if len(q) < 2:
+        return jsonify({"results": []}), 200
+
+    results = []
+
+    # Search hubs
+    hubs = Hub.query.filter(
+        db.or_(
+            Hub.name.ilike(f"%{q}%"),
+            Hub.location.ilike(f"%{q}%"),
+        )
+    ).limit(5).all()
+    for h in hubs:
+        results.append({
+            "type": "hub",
+            "icon": "🏢",
+            "title": h.name,
+            "subtitle": h.location or "",
+            "url": f"/admin/hubs/{h.hub_id}",
+        })
+
+    # Search coordinators
+    coords = Coordinator.query.filter(
+        db.or_(
+            Coordinator.full_name.ilike(f"%{q}%"),
+            Coordinator.email.ilike(f"%{q}%"),
+        )
+    ).limit(5).all()
+    for c in coords:
+        hub = Hub.query.get(c.hub_id)
+        results.append({
+            "type": "coordinator",
+            "icon": "👤",
+            "title": c.full_name,
+            "subtitle": f"{c.email} — {hub.name if hub else ''}",
+            "url": f"/admin/coordinators/{c.coordinator_id}",
+        })
+
+    # Search cohorts
+    cohorts = Cohort.query.filter(
+        Cohort.name.ilike(f"%{q}%")
+    ).limit(5).all()
+    for c in cohorts:
+        hub = Hub.query.get(c.hub_id)
+        results.append({
+            "type": "cohort",
+            "icon": "📚",
+            "title": c.name,
+            "subtitle": hub.name if hub else "",
+            "url": f"/admin/hubs/{c.hub_id}",
+        })
+
+    # Search learners by name or SEG ID
+    learners = Learner.query.filter(
+        db.or_(
+            Learner.full_name.ilike(f"%{q}%"),
+            Learner.seg_id.ilike(f"%{q}%"),
+        )
+    ).limit(5).all()
+    for l in learners:
+        cohort = Cohort.query.get(l.cohort_id)
+        hub = Hub.query.get(cohort.hub_id) if cohort else None
+        results.append({
+            "type": "learner",
+            "icon": "🎓",
+            "title": f"{l.full_name} ({l.seg_id})",
+            "subtitle": f"{cohort.name if cohort else ''} — {hub.name if hub else ''}",
+            "url": f"/admin/hubs/{hub.hub_id}" if hub else "#",
+        })
+
+    return jsonify({"results": results}), 200
+    
 # ─── COORDINATORS ─────────────────────────────────────
 @admin_api_bp.route("/coordinators", methods=["GET"])
 @admin_required

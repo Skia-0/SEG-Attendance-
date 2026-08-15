@@ -78,8 +78,14 @@
 
 <main class="main-content">
     <div class="topbar-desktop">
-        <div class="topbar-spacer"></div>
-        <button class="notif-btn" onclick="toggleNotifications()">
+    <div class="search-bar">
+        <input type="text" id="globalSearch" placeholder="Search hubs, coordinators, learners..."
+               oninput="handleGlobalSearch(this.value)"
+               onfocus="document.getElementById('searchResults').style.display='block'"
+               autocomplete="off">
+        <div class="search-results" id="searchResults"></div>
+    </div>
+    <button class="notif-btn" onclick="toggleNotifications()">
             🔔<span id="notifBadge" class="notif-badge"></span>
         </button>
     </div>
@@ -130,6 +136,50 @@ function toggleSidebar() {
     }
 }
 
+// ─── GLOBAL SEARCH ─────────────────────────────
+var searchTimeout = null;
+
+function handleGlobalSearch(query) {
+    clearTimeout(searchTimeout);
+    var results = document.getElementById('searchResults');
+
+    if (query.length < 2) {
+        results.style.display = 'none';
+        results.innerHTML = '';
+        return;
+    }
+
+    searchTimeout = setTimeout(async function() {
+        try {
+            var res = await api('/api/admin/search?q=' + encodeURIComponent(query));
+            if (res.results.length === 0) {
+                results.innerHTML = '<div class="search-empty">No results found</div>';
+            } else {
+                results.innerHTML = res.results.map(function(r) {
+                    return '<a href="' + r.url + '" class="search-item">'
+                        + '<span class="search-icon">' + r.icon + '</span>'
+                        + '<div class="search-content">'
+                        + '<div class="search-title">' + escapeHtml(r.title) + '</div>'
+                        + '<div class="search-sub">' + escapeHtml(r.subtitle) + '</div>'
+                        + '</div>'
+                        + '<span class="search-type">' + r.type + '</span>'
+                        + '</a>';
+                }).join('');
+            }
+            results.style.display = 'block';
+        } catch (e) {
+            results.innerHTML = '<div class="search-empty">Search failed</div>';
+        }
+    }, 300);
+}
+
+document.addEventListener('click', function(e) {
+    var results = document.getElementById('searchResults');
+    var search = document.getElementById('globalSearch');
+    if (results && !results.contains(e.target) && e.target !== search) {
+        results.style.display = 'none';
+    }
+});
 // Notifications
 // Notifications
 // ─── NOTIFICATIONS ─────────────────────────────

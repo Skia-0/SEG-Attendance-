@@ -7,89 +7,201 @@
     <p class="subtitle">Manage all hub coordinators</p>
 </div>
 
+<div class="filters" style="justify-content:space-between;">
+    <div style="display:flex;gap:10px;flex:1;">
+        <input type="text" id="searchInput" placeholder="Search coordinators..."
+               oninput="filterCoordinators()"
+               style="flex:1;padding:8px 12px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);border-radius:6px;font-size:13px;">
+    </div>
+    <button class="btn-sm btn-orange" onclick="openCreateModal()">+ New Coordinator</button>
+</div>
+
 <div id="coordinatorsTable" class="table-container">
     <div class="loading">Loading coordinators...</div>
+</div>
+
+<!-- Create Coordinator Modal -->
+<div id="createModal" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width:500px;">
+        <div class="modal-header">
+            <h2>Create Coordinator</h2>
+            <button class="modal-close" onclick="closeCreateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <label>Full Name</label>
+            <input type="text" id="newName" placeholder="Full name">
+
+            <label>Email</label>
+            <input type="email" id="newEmail" placeholder="name@seghana.net">
+
+            <label>Password</label>
+            <div class="password-field">
+                <input type="password" id="newPassword" placeholder="Min 8 chars, letter + number">
+                <button type="button" class="eye-btn" onclick="togglePw('newPassword', this)"><span>👁</span></button>
+            </div>
+
+            <label>Hub</label>
+            <select id="newHub" style="width:100%;padding:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);border-radius:6px;">
+                <option value="">Select hub...</option>
+            </select>
+
+            <label>Role</label>
+            <select id="newRole" style="width:100%;padding:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);border-radius:6px;">
+                <option value="coordinator">Coordinator</option>
+                <option value="lead">Lead</option>
+            </select>
+
+            <div id="createMessage" style="margin-top:12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-sm" onclick="closeCreateModal()">Cancel</button>
+            <button class="btn-sm btn-orange" onclick="submitCreateCoordinator()">Create Account</button>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+var allCoordinators = [];
+
 loadCoordinators();
 
 async function loadCoordinators() {
     try {
-        const coords = await api('/api/admin/coordinators');
-        const container = document.getElementById('coordinatorsTable');
-
-        if (coords.length === 0) {
-            container.innerHTML = '<div class="empty">No coordinators registered yet</div>';
-            return;
-        }
-
-        container.innerHTML = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Hub</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${coords.map(c => `
-                        <tr>
-                            <td><strong>${escapeHtml(c.full_name)}</strong></td>
-                            <td>${escapeHtml(c.email)}</td>
-                            <td>${escapeHtml(c.hub_name || '-')}</td>
-                            <td><span class="badge">${escapeHtml(c.role)}</span></td>
-                            <td>
-                                ${c.is_locked
-                                    ? '<span class="badge badge-danger">Locked</span>'
-                                    : c.email_verified
-                                      ? '<span class="badge badge-success">Active</span>'
-                                      : '<span class="badge badge-warning">Unverified</span>'
-                                }
-                            </td>
-                            <td>
-                                ${c.is_locked
-                                    ? `<button class="btn-sm" onclick="unlockCoord('${c.coordinator_id}')">Unlock</button>`
-                                    : ''
-                                }
-                                <button class="btn-sm btn-orange" onclick="resetCoordPassword('${c.coordinator_id}', '${escapeHtml(c.email)}')">
-                                    Reset Password
-                                </button>
-                            </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
+        allCoordinators = await api('/api/admin/coordinators');
+        renderCoordinators(allCoordinators);
     } catch (e) {
         showError('Failed to load coordinators');
     }
 }
 
+function filterCoordinators() {
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    if (q.length < 1) {
+        renderCoordinators(allCoordinators);
+        return;
+    }
+    var filtered = allCoordinators.filter(function(c) {
+        return c.full_name.toLowerCase().includes(q)
+            || c.email.toLowerCase().includes(q)
+            || (c.hub_name || '').toLowerCase().includes(q)
+            || (c.role || '').toLowerCase().includes(q);
+    });
+    renderCoordinators(filtered);
+}
+
+function renderCoordinators(coords) {
+    var container = document.getElementById('coordinatorsTable');
+
+    if (coords.length === 0) {
+        container.innerHTML = '<div class="empty">No coordinators found</div>';
+        return;
+    }
+
+    container.innerHTML = '<table class="data-table"><thead><tr>'
+        + '<th>Name</th><th>Email</th><th>Hub</th><th>Role</th><th>Status</th><th>Actions</th>'
+        + '</tr></thead><tbody>'
+        + coords.map(function(c) {
+            var statusBadge = c.is_locked
+                ? '<span class="badge badge-danger">Locked</span>'
+                : c.email_verified
+                    ? '<span class="badge badge-success">Active</span>'
+                    : '<span class="badge badge-warning">Unverified</span>';
+            var roleBadge = c.role === 'lead'
+                ? '<span class="badge" style="background:rgba(139,92,246,0.15);color:#8B5CF6;">Lead</span>'
+                : '<span class="badge">Coordinator</span>';
+
+            return '<tr style="cursor:pointer;" onclick="window.location.href=\'/admin/coordinators/' + c.coordinator_id + '\'">'
+                + '<td><strong>' + escapeHtml(c.full_name) + '</strong></td>'
+                + '<td>' + escapeHtml(c.email) + '</td>'
+                + '<td>' + escapeHtml(c.hub_name || '-') + '</td>'
+                + '<td>' + roleBadge + '</td>'
+                + '<td>' + statusBadge + '</td>'
+                + '<td onclick="event.stopPropagation();">'
+                + (c.is_locked ? '<button class="btn-sm" onclick="unlockCoord(\'' + c.coordinator_id + '\')">Unlock</button>' : '')
+                + '<button class="btn-sm btn-orange" onclick="resetCoordPassword(\'' + c.coordinator_id + '\', \'' + escapeHtml(c.email) + '\')">Reset PW</button>'
+                + '</td></tr>';
+        }).join('')
+        + '</tbody></table>';
+}
+
 async function unlockCoord(id) {
     if (!confirm('Unlock this coordinator?')) return;
     try {
-        await api(`/api/admin/coordinators/${id}/unlock`, 'POST');
+        await api('/api/admin/coordinators/' + id + '/unlock', 'POST');
         showSuccess('Coordinator unlocked');
         loadCoordinators();
-    } catch (e) {
-        showError('Failed to unlock');
-    }
+    } catch (e) { showError('Failed to unlock'); }
 }
 
 async function resetCoordPassword(id, email) {
-    if (!confirm(`Send password reset code to ${email}?`)) return;
+    if (!confirm('Send password reset code to ' + email + '?')) return;
     try {
-        await api(`/api/admin/coordinators/${id}/reset-password`, 'POST');
-        showSuccess(`Reset code sent to ${email}`);
+        await api('/api/admin/coordinators/' + id + '/reset-password', 'POST');
+        showSuccess('Reset code sent to ' + email);
+    } catch (e) { showError('Failed to send reset code'); }
+}
+
+// Create coordinator modal
+async function openCreateModal() {
+    document.getElementById('createModal').style.display = 'flex';
+    // Load hubs for dropdown
+    try {
+        var hubs = await api('/api/admin/hubs');
+        var select = document.getElementById('newHub');
+        select.innerHTML = '<option value="">Select hub...</option>'
+            + hubs.map(function(h) {
+                return '<option value="' + h.hub_id + '">' + escapeHtml(h.name) + '</option>';
+            }).join('');
+    } catch (e) { console.error(e); }
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').style.display = 'none';
+    document.getElementById('newName').value = '';
+    document.getElementById('newEmail').value = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('createMessage').innerHTML = '';
+}
+
+async function submitCreateCoordinator() {
+    var name = document.getElementById('newName').value.trim();
+    var email = document.getElementById('newEmail').value.trim();
+    var password = document.getElementById('newPassword').value;
+    var hubId = document.getElementById('newHub').value;
+    var role = document.getElementById('newRole').value;
+    var msgArea = document.getElementById('createMessage');
+
+    if (!name || !email || !password || !hubId) {
+        msgArea.innerHTML = '<div class="flash flash-danger">All fields required</div>';
+        return;
+    }
+
+    try {
+        await api('/api/admin/coordinators', 'POST', {
+            full_name: name,
+            email: email,
+            password: password,
+            hub_id: hubId,
+            role: role,
+        });
+        showSuccess('Coordinator created (pre-verified)');
+        closeCreateModal();
+        loadCoordinators();
     } catch (e) {
-        showError('Failed to send reset code');
+        msgArea.innerHTML = '<div class="flash flash-danger">' + (e.message || 'Failed to create') + '</div>';
+    }
+}
+
+function togglePw(id, btn) {
+    var input = document.getElementById(id);
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.querySelector('span').textContent = '👁‍🗨';
+    } else {
+        input.type = 'password';
+        btn.querySelector('span').textContent = '👁';
     }
 }
 </script>
