@@ -46,6 +46,8 @@ def _build_session_report_data(session, cohort):
                 if record and record.checked_out_at else None,
             "verification_method":
                 record.verification_method if record else None,
+            "override_reason":
+                record.override_reason if record else None,
             "is_complete":
                 record.is_complete if record else False,
         })
@@ -169,7 +171,6 @@ def submit_session_report(session_id):
     log_action(coordinator, "report.session_submitted", "report",
                report.report_id, {"session_id": str(session_id)})
 
-    # Notify admins
     try:
         from app.services.notification_service import NotificationService
         hub = Hub.query.get(cohort.hub_id)
@@ -232,7 +233,6 @@ def submit_cohort_final_report(cohort_id):
                "report", report.report_id,
                {"cohort_id": str(cohort_id)})
 
-    # Notify admins
     try:
         from app.services.notification_service import NotificationService
         hub = Hub.query.get(cohort.hub_id)

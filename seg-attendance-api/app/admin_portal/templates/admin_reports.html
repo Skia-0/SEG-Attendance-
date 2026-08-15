@@ -173,6 +173,7 @@ function renderReportDetail(r) {
                             <th>Check Out</th>
                             <th>Method</th>
                             <th>Status</th>
+                            <th>Override Reason</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -190,6 +191,7 @@ function renderReportDetail(r) {
                                     <td>${a.checked_out_at ? formatActualDateTime(a.checked_out_at) : '—'}</td>
                                     <td>${escapeHtml(a.verification_method || '—')}</td>
                                     <td>${status}</td>
+                                    <td>${a.override_reason ? '<span style="color:#F59E0B;font-size:11px;">' + escapeHtml(a.override_reason) + '</span>' : '—'}</td>
                                 </tr>
                             `;
                         }).join('')}

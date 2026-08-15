@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from app.models import AttendanceRecord, Session, Learner, Cohort
+from app.models import AttendanceRecord, Session, Learner, Cohort, Hub
 from app.extensions import db
 from app.utils import (
     get_current_coordinator,
@@ -116,6 +116,24 @@ def checkin():
 
     log_action(coordinator, "attendance.checkin", "attendance",
                record.record_id, log_details)
+        # Notify admin if manual override
+    if verification_method == "manual":
+        try:
+            from app.services.notification_service import NotificationService
+            cohort = Cohort.query.get(session.cohort_id)
+            hub = Hub.query.get(cohort.hub_id) if cohort else None
+            NotificationService.notify(
+                category="security",
+                title="Manual override used",
+                subtitle=f"{learner.full_name} ({learner.seg_id}) — "
+                         f"{session.title}, {cohort.name if cohort else ''} "
+                         f"({hub.name if hub else ''}) "
+                         f"Reason: {override_reason or 'No reason given'}",
+                icon="✋",
+                url="/admin/audit-log",
+            )
+        except Exception:
+            pass
 
     return jsonify(record.to_dict()), 200
 
