@@ -1,6 +1,6 @@
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, session, flash
+    url_for, session, flash, current_app
 )
 from app.models import Admin
 from flask_jwt_extended import create_access_token

@@ -668,6 +668,200 @@ def download_report_json(report_id):
         }
     )
 
+# ─── COORDINATOR MANAGEMENT ──────────────────────────
+@admin_api_bp.route("/coordinators", methods=["POST"])
+@admin_required
+def admin_create_coordinator():
+    """Admin creates a new coordinator account (pre-verified)."""
+    admin = get_current_admin()
+    data = request.get_json() or {}
+
+    full_name = (data.get("full_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+    hub_id = (data.get("hub_id") or "").strip()
+    role = (data.get("role") or "coordinator").strip()
+
+    if not full_name or not email or not password or not hub_id:
+        return jsonify({
+            "error": "full_name, email, password, and hub_id required"
+        }), 400
+
+    pw_error = _validate_password(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
+
+    if role not in ["coordinator", "lead"]:
+        return jsonify({"error": "Role must be coordinator or lead"}), 400
+
+    existing = Coordinator.query.filter_by(email=email).first()
+    if existing:
+        return jsonify({"error": "Email already registered"}), 409
+
+    hub = Hub.query.get(hub_id)
+    if not hub:
+        return jsonify({"error": "Hub not found"}), 404
+
+    coord = Coordinator(
+        full_name=full_name,
+        email=email,
+        email_verified=True,  # Admin-created = pre-verified
+        hub_id=hub_id,
+        role=role,
+    )
+    coord.set_password(password)
+    db.session.add(coord)
+    db.session.commit()
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=hub_id,
+        action="admin.coordinator_created",
+        resource_type="coordinator",
+        resource_id=str(coord.coordinator_id),
+        details={
+            "email": email,
+            "hub_name": hub.name,
+            "created_by": admin.email,
+        },
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    try:
+        from app.services.notification_service import NotificationService
+        NotificationService.coordinator_registered(
+            full_name, hub.name, email
+        )
+    except Exception:
+        pass
+
+    return jsonify(coord.to_dict()), 201
+
+
+@admin_api_bp.route(
+    "/coordinators/<coordinator_id>/deactivate", methods=["POST"]
+)
+@admin_required
+def deactivate_coordinator(coordinator_id):
+    """Deactivate a coordinator (soft disable — keeps data)."""
+    admin = get_current_admin()
+    coord = Coordinator.query.get(coordinator_id)
+    if not coord:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    # We don't have is_active on coordinator model yet,
+    # so we lock them indefinitely as a workaround
+    coord.locked_until = datetime.utcnow() + timedelta(days=36500)  # 100 years
+    coord.failed_login_attempts = 999
+    db.session.commit()
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=coord.hub_id,
+        action="admin.coordinator_deactivated",
+        resource_type="coordinator",
+        resource_id=str(coord.coordinator_id),
+        details={"admin_email": admin.email},
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    return jsonify({"message": "Coordinator deactivated"}), 200
+
+
+@admin_api_bp.route(
+    "/coordinators/<coordinator_id>/transfer", methods=["POST"]
+)
+@admin_required
+def transfer_coordinator(coordinator_id):
+    """Transfer coordinator to a different hub."""
+    admin = get_current_admin()
+    data = request.get_json() or {}
+    new_hub_id = (data.get("hub_id") or "").strip()
+
+    if not new_hub_id:
+        return jsonify({"error": "hub_id required"}), 400
+
+    coord = Coordinator.query.get(coordinator_id)
+    if not coord:
+        return jsonify({"error": "Coordinator not found"}), 404
+
+    new_hub = Hub.query.get(new_hub_id)
+    if not new_hub:
+        return jsonify({"error": "Hub not found"}), 404
+
+    old_hub = Hub.query.get(coord.hub_id)
+    old_hub_name = old_hub.name if old_hub else "Unknown"
+
+    coord.hub_id = new_hub_id
+    db.session.commit()
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=new_hub_id,
+        action="admin.coordinator_transferred",
+        resource_type="coordinator",
+        resource_id=str(coord.coordinator_id),
+        details={
+            "from_hub": old_hub_name,
+            "to_hub": new_hub.name,
+            "admin_email": admin.email,
+        },
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Transferred to {new_hub.name}",
+        "coordinator": coord.to_dict(),
+    }), 200
+
+
+# ─── REPORT MANAGEMENT ───────────────────────────────
+@admin_api_bp.route(
+    "/reports/<report_id>/delete", methods=["DELETE"]
+)
+@admin_required
+def delete_report(report_id):
+    """
+    Admin deletes a submitted report, unlocking it for resubmission.
+    This is the industry-standard approach — coordinator contacts admin,
+    admin deletes, coordinator resubmits fresh.
+    """
+    admin = get_current_admin()
+    report = Report.query.get(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    report_type = report.report_type
+    session_id = str(report.session_id) if report.session_id else None
+    cohort_id = str(report.cohort_id)
+
+    db.session.delete(report)
+    db.session.commit()
+
+    entry = AuditLog(
+        admin_id=admin.admin_id,
+        hub_id=report.hub_id,
+        action="admin.report_deleted",
+        resource_type="report",
+        resource_id=report_id,
+        details={
+            "report_type": report_type,
+            "session_id": session_id,
+            "cohort_id": cohort_id,
+            "admin_email": admin.email,
+            "reason": "Unlocked for coordinator resubmission",
+        },
+    )
+    db.session.add(entry)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Report deleted. Coordinator can now resubmit."
+    }), 200
+
 
 # ─── AUDIT LOG ────────────────────────────────────────
 @admin_api_bp.route("/audit-log", methods=["GET"])

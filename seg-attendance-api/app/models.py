@@ -635,3 +635,17 @@ class AdminNotification(db.Model):
                 self.created_at.isoformat()
                 if self.created_at else None,
         }
+
+class TokenBlocklist(db.Model):
+    __tablename__ = "token_blocklist"
+
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(36), nullable=False, index=True)
+    token_type = db.Column(db.String(10), nullable=False)
+    user_id = db.Column(db.String(100), nullable=True)
+    revoked_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        server_default=db.text("NOW()")
+    )
+    expires_at = db.Column(db.DateTime, nullable=False)

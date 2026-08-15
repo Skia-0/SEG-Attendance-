@@ -7,12 +7,24 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # CSRF protection for admin portal forms
+    app.config['WTF_CSRF_ENABLED'] = True
+    app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
 
-    # CORS — restricted origins from config
+    # Token blocklist check
+    @jwt.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        from app.models import TokenBlocklist
+        jti = jwt_payload["jti"]
+        token = TokenBlocklist.query.filter_by(jti=jti).first()
+        return token is not None
+
+    # CORS
     cors_origins = app.config.get("CORS_ORIGINS", "*")
     cors.init_app(app, resources={r"/*": {"origins": cors_origins}})
 
@@ -102,7 +114,7 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_api_bp, url_prefix="/api/admin")
     app.register_blueprint(admin_portal_bp, url_prefix="/admin")
 
-        # Global input length protection
+    # Global input length protection
     @app.before_request
     def check_input_lengths():
         if request.is_json:

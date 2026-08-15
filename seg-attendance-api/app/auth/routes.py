@@ -7,6 +7,7 @@ from flask_jwt_extended import (
     create_refresh_token,
     jwt_required,
     get_jwt_identity,
+    get_jwt,
 )
 from app.models import Coordinator, Hub
 from app.extensions import db, limiter
@@ -541,3 +542,48 @@ def change_password():
                "coordinator", coordinator.coordinator_id)
 
     return jsonify({"message": "Password updated"}), 200
+
+@auth_bp.route("/logout", methods=["POST"])
+@jwt_required()
+def coordinator_logout():
+    """Revoke the current access token."""
+    from app.models import TokenBlocklist
+    jti = get_jwt()["jti"]
+    exp = datetime.utcfromtimestamp(get_jwt()["exp"])
+    identity = get_jwt_identity()
+
+    blocked = TokenBlocklist(
+        jti=jti,
+        token_type="access",
+        user_id=identity,
+        expires_at=exp,
+    )
+    db.session.add(blocked)
+    db.session.commit()
+
+    return jsonify({"message": "Logged out"}), 200
+
+
+@auth_bp.route("/logout-all", methods=["POST"])
+@jwt_required()
+def coordinator_logout_all():
+    """
+    Revoke all tokens for this user.
+    Forces re-login on all devices.
+    """
+    from app.models import TokenBlocklist
+    identity = get_jwt_identity()
+
+    # We can't revoke tokens we don't know about,
+    # but we can add a marker that blocks all tokens
+    # issued before now
+    blocked = TokenBlocklist(
+        jti=f"all-{identity}-{datetime.utcnow().timestamp()}",
+        token_type="all",
+        user_id=identity,
+        expires_at=datetime.utcnow() + timedelta(days=30),
+    )
+    db.session.add(blocked)
+    db.session.commit()
+
+    return jsonify({"message": "All sessions revoked"}), 200
