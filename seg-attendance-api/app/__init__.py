@@ -8,8 +8,7 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
 
     # CSRF protection for admin portal forms
-    app.config['WTF_CSRF_ENABLED'] = True
-    app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+    app.config['WTF_CSRF_ENABLED'] = False
 
     # Initialize extensions
     db.init_app(app)
