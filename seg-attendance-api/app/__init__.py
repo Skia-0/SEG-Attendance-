@@ -7,7 +7,7 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    # CSRF protection for admin portal forms
+    # Disable CSRF for forms until v1.4 custom WTForms implementation
     app.config['WTF_CSRF_ENABLED'] = False
 
     # Initialize extensions
