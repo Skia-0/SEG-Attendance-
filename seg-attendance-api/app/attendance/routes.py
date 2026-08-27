@@ -116,7 +116,8 @@ def checkin():
 
     log_action(coordinator, "attendance.checkin", "attendance",
                record.record_id, log_details)
-        # Notify admin if manual override
+
+    # Notify admin if manual override
     if verification_method == "manual":
         try:
             from app.services.notification_service import NotificationService
@@ -222,6 +223,25 @@ def checkout():
     log_action(coordinator, "attendance.checkout", "attendance",
                record.record_id, log_details)
 
+    # Notify admin if manual override
+    if verification_method == "manual":
+        try:
+            from app.services.notification_service import NotificationService
+            cohort = Cohort.query.get(session.cohort_id)
+            hub = Hub.query.get(cohort.hub_id) if cohort else None
+            NotificationService.notify(
+                category="security",
+                title="Manual override used",
+                subtitle=f"{learner.full_name} ({learner.seg_id}) — "
+                         f"{session.title}, {cohort.name if cohort else ''} "
+                         f"({hub.name if hub else ''}) "
+                         f"Reason: {override_reason or 'No reason given'}",
+                icon="✋",
+                url="/admin/audit-log",
+            )
+        except Exception:
+            pass
+
     return jsonify(record.to_dict()), 200
 
 
@@ -265,6 +285,7 @@ def get_attendance_records(session_id):
                 "is_complete": record.is_complete,
                 "fingerprint_enrolled": learner.fingerprint_enrolled,
                 "nfc_uid": learner.nfc_uid,
+                "photo_base64": learner.photo_base64,
             })
         else:
             results.append({
@@ -280,6 +301,7 @@ def get_attendance_records(session_id):
                 "is_complete": False,
                 "fingerprint_enrolled": learner.fingerprint_enrolled,
                 "nfc_uid": learner.nfc_uid,
+                "photo_base64": learner.photo_base64,
             })
 
     return jsonify(results), 200

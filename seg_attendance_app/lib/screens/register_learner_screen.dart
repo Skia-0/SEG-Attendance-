@@ -1,10 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/nfc_service.dart';
 import '../services/biometric_service.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
-import 'dart:convert';
 
 class RegisterLearnerScreen extends StatefulWidget {
   final String cohortId;
@@ -33,9 +33,9 @@ class _RegisterLearnerScreenState
 
   String? _nfcUid;
   bool _fingerprintEnrolled = false;
-  bool _loading = false;
   File? _photo;
   final _picker = ImagePicker();
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -113,6 +113,33 @@ class _RegisterLearnerScreenState
     }
   }
 
+  Future<void> _takePhoto() async {
+    try {
+      final image = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 80,
+      );
+      if (image != null) {
+        setState(() => _photo = File(image.path));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Photo captured successfully'),
+              backgroundColor: Color(0xFFFF6B00),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Camera error: ${e.toString()}');
+      }
+    }
+  }
+
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -122,35 +149,6 @@ class _RegisterLearnerScreenState
       ),
     );
   }
-  
-  Future<void> _takePhoto() async {
-  try {
-    final image = await _picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 800,
-      maxHeight: 800,
-      imageQuality: 85,
-    );
-    if (image != null) {
-      setState(() => _photo = File(image.path));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo captured'),
-          backgroundColor: Color(0xFFFF6B00),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Camera error: ${e.toString()}'),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-}
 
   Future<void> _register({bool confirmDuplicate = false}) async {
     if (!_formKey.currentState!.validate()) return;
@@ -165,6 +163,12 @@ class _RegisterLearnerScreenState
     setState(() => _loading = true);
 
     try {
+      String? base64Photo;
+      if (_photo != null) {
+        final bytes = await _photo!.readAsBytes();
+        base64Photo = base64Encode(bytes);
+      }
+
       final response = await _api.registerLearnerWithConfirm(
         fullName: _nameController.text.trim(),
         phone: _phoneController.text.trim().isEmpty
@@ -172,6 +176,7 @@ class _RegisterLearnerScreenState
             : _phoneController.text.trim(),
         cohortId: widget.cohortId,
         nfcUid: _nfcUid,
+        photoBase64: base64Photo,
         confirmDuplicate: confirmDuplicate,
       );
 
@@ -189,8 +194,6 @@ class _RegisterLearnerScreenState
       if (!mounted) return;
       setState(() => _loading = false);
 
-      // Check for duplicate name warning
-      String errorStr = e.toString();
       try {
         final response = (e as dynamic).response;
         final data = response?.data;
@@ -354,14 +357,14 @@ class _RegisterLearnerScreenState
   }
 
   void _resetForm() {
-  _nameController.clear();
-  _phoneController.clear();
-  setState(() {
-    _nfcUid = null;
-    _fingerprintEnrolled = false;
-    _photo = null;
-  });
-}
+    _nameController.clear();
+    _phoneController.clear();
+    setState(() {
+      _nfcUid = null;
+      _fingerprintEnrolled = false;
+      _photo = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -478,7 +481,7 @@ class _RegisterLearnerScreenState
 
                 _MethodTile(
                   icon: Icons.camera_alt_outlined,
-                  title: 'Photo',
+                  title: 'Photo ID',
                   subtitle: _photo != null
                       ? 'Photo captured'
                       : 'Tap to take photo (optional)',
@@ -642,8 +645,8 @@ class _NfcScanDialog extends StatelessWidget {
             Container(
               width: 100,
               height: 100,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFF3E0),
                 shape: BoxShape.circle,
               ),
               child: const Icon(

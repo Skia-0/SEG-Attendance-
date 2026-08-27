@@ -120,16 +120,16 @@ class ApiService {
   }
 
   Future<Response> verifyOtp({
-  required String email,
-  required String code,
-  required String purpose,
-}) {
-  return _dio.post('/auth/verify-otp', data: {
-    'email': email,
-    'code': code,
-    'purpose': purpose,
-  });
-}
+    required String email,
+    required String code,
+    required String purpose,
+  }) {
+    return _dio.post('/auth/verify-otp', data: {
+      'email': email,
+      'code': code,
+      'purpose': purpose,
+    });
+  }
 
   Future<Response> resendOtp({
     required String email,
@@ -217,12 +217,14 @@ class ApiService {
     String? phone,
     required String cohortId,
     String? nfcUid,
+    String? photoBase64,
   }) {
     return _dio.post('/learners', data: {
       'full_name': fullName,
       'phone': phone,
       'cohort_id': cohortId,
       'nfc_uid': nfcUid,
+      'photo_base64': photoBase64,
     });
   }
 
@@ -231,7 +233,7 @@ class ApiService {
     String? phone,
     required String cohortId,
     String? nfcUid,
-    String? photoBase64, // <-- ADDED
+    String? photoBase64,
     bool confirmDuplicate = false,
   }) {
     return _dio.post('/learners', data: {
@@ -239,7 +241,7 @@ class ApiService {
       'phone': phone,
       'cohort_id': cohortId,
       'nfc_uid': nfcUid,
-      'photo_base64': photoBase64, // <-- ADDED
+      'photo_base64': photoBase64,
       'confirm_duplicate': confirmDuplicate,
     });
   }

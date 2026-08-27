@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/attendance_provider.dart';
@@ -113,6 +114,96 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  void _showLearnerVerificationPopup({
+    required String name,
+    required String segId,
+    required String actionLabel,
+    String? photoBase64,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) {
+        Future.delayed(const Duration(milliseconds: 2500), () {
+          if (mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+        });
+
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(60),
+                  child: photoBase64 != null && photoBase64.isNotEmpty
+                      ? Image.memory(
+                          base64Decode(photoBase64),
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          width: 120,
+                          height: 120,
+                          color: const Color(0xFFFFF3E0),
+                          child: const Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Color(0xFFFF6B00),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B00),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    actionLabel.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  segId,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color: Color(0xFF888888),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _doCheckAction(
       AttendanceRecord learner, String method,
       {String? overrideReason}) async {
@@ -145,8 +236,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (!mounted) return;
 
     if (error == null) {
-      _showSnack(
-          '$actionLabel: ${learner.fullName ?? "Learner"}');
+      _showLearnerVerificationPopup(
+        name: learner.fullName ?? "Learner",
+        segId: learner.segId ?? "",
+        actionLabel: actionLabel,
+        photoBase64: learner.photoBase64,
+      );
     } else {
       _showSnack(error, isError: true);
     }
@@ -439,28 +534,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
 
     if (submit == true && mounted) {
-  try {
-    await ApiService()
-        .submitSessionReport(widget.sessionId);
-    if (mounted) _showSnack('Report submitted ✓');
-  } catch (e) {
-    String msg = 'Failed to submit report';
-    try {
-      final resp = (e as dynamic).response;
-      final err = resp?.data?['error'];
-      if (err != null) {
-        final errStr = err.toString();
-        if (errStr.contains('already submitted')) {
-          msg = 'Report was already submitted for this session.';
-        } else {
-          msg = errStr;
+      try {
+        await ApiService()
+            .submitSessionReport(widget.sessionId);
+        if (mounted) _showSnack('Report submitted ✓');
+      } catch (_) {
+        if (mounted) {
+          _showSnack('Failed to submit report', isError: true);
         }
       }
-    } catch (_) {}
-    if (mounted) _showSnack(msg, isError: true);
+    }
+
+    if (mounted) Navigator.pop(context);
   }
- }
-}
 
   Future<void> _openFingerprintPicker() async {
     final prov = context.read<AttendanceProvider>();
