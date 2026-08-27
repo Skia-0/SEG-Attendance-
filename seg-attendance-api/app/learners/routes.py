@@ -59,6 +59,7 @@ def register_learner():
     phone = (data.get("phone") or "").strip() or None
     cohort_id = data.get("cohort_id")
     nfc_uid = (data.get("nfc_uid") or "").strip() or None
+    photo_base64 = data.get("photo_base64") or None
     confirm_duplicate = data.get("confirm_duplicate", False)
 
     if not full_name or not cohort_id:
@@ -103,7 +104,8 @@ def register_learner():
                 cohort_id=cohort.cohort_id,
                 nfc_uid=nfc_uid,
                 seg_id=seg_id,
-                fingerprint_enrolled=False
+                fingerprint_enrolled=False,
+                photo_base64=photo_base64,
             )
 
             db.session.add(learner)

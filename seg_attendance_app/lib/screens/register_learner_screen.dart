@@ -4,6 +4,7 @@ import '../services/nfc_service.dart';
 import '../services/biometric_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
 
 class RegisterLearnerScreen extends StatefulWidget {
   final String cohortId;

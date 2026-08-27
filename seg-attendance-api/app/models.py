@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -59,17 +60,16 @@ class Cohort(db.Model):
     min_attendance_percent = db.Column(
         db.Integer, default=80, nullable=False
     )
-    created_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        server_default=db.text("NOW()")
-    )
-
     is_deleted = db.Column(
         db.Boolean, default=False, nullable=False,
         server_default="false"
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        server_default=db.text("NOW()")
+    )
 
     hub = db.relationship("Hub", back_populates="cohorts")
     learners = db.relationship(
@@ -93,6 +93,7 @@ class Cohort(db.Model):
             "end_date":
                 self.end_date.isoformat() if self.end_date else None,
             "min_attendance_percent": self.min_attendance_percent,
+            "is_deleted": self.is_deleted,
             "created_at":
                 self.created_at.isoformat()
                 if self.created_at else None
@@ -118,14 +119,14 @@ class Coordinator(db.Model):
         db.Boolean, default=False, nullable=False,
         server_default="false"
     )
-    phone = db.Column(db.String(20), nullable=True)  # optional recovery
+    phone = db.Column(db.String(20), nullable=True)
     password_hash = db.Column(db.Text, nullable=False)
     role = db.Column(
         db.String(20),
         default="coordinator",
         nullable=False,
         server_default="coordinator"
-    )  # coordinator | lead
+    )
     hub_id = db.Column(
         UUID(as_uuid=True),
         db.ForeignKey("hubs.hub_id", ondelete="CASCADE"),
@@ -174,7 +175,6 @@ class Coordinator(db.Model):
 
 
 class Admin(db.Model):
-    """Central SEG office admin — accesses admin portal only."""
     __tablename__ = "admins"
 
     admin_id = db.Column(
@@ -196,7 +196,7 @@ class Admin(db.Model):
         default="admin",
         nullable=False,
         server_default="admin"
-    )  # admin | super_admin
+    )
     created_at = db.Column(
         db.DateTime,
         default=datetime.utcnow,
@@ -229,7 +229,6 @@ class Admin(db.Model):
 
 
 class EmailVerification(db.Model):
-    """OTP tokens for email verification and password recovery."""
     __tablename__ = "email_verifications"
 
     verification_id = db.Column(
@@ -240,7 +239,6 @@ class EmailVerification(db.Model):
     email = db.Column(db.String(255), nullable=False, index=True)
     otp_code = db.Column(db.String(6), nullable=False)
     purpose = db.Column(db.String(30), nullable=False)
-    # purpose: register | login | password_reset
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
     attempts = db.Column(
@@ -275,6 +273,7 @@ class Learner(db.Model):
         db.Boolean, default=False, nullable=False,
         server_default="false"
     )
+    photo_base64 = db.Column(db.Text, nullable=True)
     registered_at = db.Column(
         db.DateTime,
         default=datetime.utcnow,
@@ -297,6 +296,7 @@ class Learner(db.Model):
             "cohort_id": str(self.cohort_id),
             "nfc_uid": self.nfc_uid,
             "fingerprint_enrolled": self.fingerprint_enrolled,
+            "photo_base64": self.photo_base64,
             "registered_at":
                 self.registered_at.isoformat()
                 if self.registered_at else None
@@ -595,7 +595,8 @@ class AuditLog(db.Model):
                 self.created_at.isoformat()
                 if self.created_at else None,
         }
-        
+
+
 class AdminNotification(db.Model):
     __tablename__ = "admin_notifications"
 
@@ -608,10 +609,8 @@ class AdminNotification(db.Model):
         UUID(as_uuid=True),
         db.ForeignKey("admins.admin_id", ondelete="CASCADE"),
         nullable=True
-    )  # null = broadcast to all admins
-    category = db.Column(
-        db.String(30), nullable=False
-    )  # report, security, system, coordinator
+    )
+    category = db.Column(db.String(30), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     subtitle = db.Column(db.String(255), nullable=True)
     icon = db.Column(db.String(10), nullable=True)
@@ -641,6 +640,7 @@ class AdminNotification(db.Model):
                 self.created_at.isoformat()
                 if self.created_at else None,
         }
+
 
 class TokenBlocklist(db.Model):
     __tablename__ = "token_blocklist"

@@ -231,6 +231,7 @@ class ApiService {
     String? phone,
     required String cohortId,
     String? nfcUid,
+    String? photoBase64, // <-- ADDED
     bool confirmDuplicate = false,
   }) {
     return _dio.post('/learners', data: {
@@ -238,6 +239,7 @@ class ApiService {
       'phone': phone,
       'cohort_id': cohortId,
       'nfc_uid': nfcUid,
+      'photo_base64': photoBase64, // <-- ADDED
       'confirm_duplicate': confirmDuplicate,
     });
   }

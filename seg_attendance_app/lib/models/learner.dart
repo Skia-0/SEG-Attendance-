@@ -6,6 +6,7 @@ class Learner {
   final String cohortId;
   final String? nfcUid;
   final bool fingerprintEnrolled;
+  final String? photoBase64; // <-- ADDED
 
   Learner({
     required this.learnerId,
@@ -15,6 +16,7 @@ class Learner {
     required this.cohortId,
     this.nfcUid,
     this.fingerprintEnrolled = false,
+    this.photoBase64,
   });
 
   factory Learner.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class Learner {
       cohortId: json['cohort_id']?.toString() ?? '',
       nfcUid: json['nfc_uid']?.toString(),
       fingerprintEnrolled: json['fingerprint_enrolled'] == true,
+      photoBase64: json['photo_base64']?.toString(), // <-- ADDED
     );
   }
 }
